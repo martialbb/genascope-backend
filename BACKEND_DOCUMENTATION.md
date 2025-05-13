@@ -49,6 +49,61 @@ cancer-genix-backend/
 └── README.md                # Basic documentation
 ```
 
+## Architecture
+
+The CancerGenix backend follows a layered architecture pattern to separate concerns and maintain a modular, maintainable codebase.
+
+### Layers
+
+1. **API Layer (Controllers)** - Located in `app/api/`
+   - Handles HTTP requests and responses
+   - Validates input data using Pydantic models
+   - Routes requests to appropriate services
+
+2. **Service Layer** - Located in `app/services/`
+   - Contains business logic
+   - Orchestrates operations between repositories
+   - Handles transactions
+   - Implements domain-specific validation rules
+
+3. **Repository Layer** - Located in `app/repositories/`
+   - Abstracts data access operations
+   - Provides methods for CRUD operations on database entities
+   - Hides SQL/ORM complexity from services
+
+4. **Model Layer** - Located in `app/models/`
+   - Defines database models using SQLAlchemy ORM
+   - Represents database structure and relationships
+
+5. **Schema Layer** - Located in `app/schemas/`
+   - Defines Pydantic models for request/response validation
+   - Handles data serialization/deserialization
+
+### Data Flow
+
+```
+Client Request → API Controller → Service → Repository → Database
+                       ↑              ↑           ↑
+                       ↓              ↓           ↓
+Response    ←    Schemas    ←    Domain Logic ← Database Models
+```
+
+### Dependency Injection
+
+The application uses FastAPI's dependency injection system to provide services with the resources they need:
+
+```python
+@router.get("/availability")
+async def get_availability(
+    clinician_id: str, 
+    date_str: str = Query(..., alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    appointment_service = AppointmentService(db)
+    # Use service to handle business logic
+```
+
 ## API Endpoints
 
 ### Authentication
