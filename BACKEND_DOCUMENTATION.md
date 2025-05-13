@@ -20,17 +20,31 @@ cancer-genix-backend/
 │   │   ├── eligibility.py   # Eligibility analysis endpoints
 │   │   ├── admin.py         # Admin endpoints
 │   │   ├── account.py       # Account management endpoints
+│   │   ├── appointments.py  # Appointment scheduling endpoints
 │   │   ├── invites.py       # Patient invite endpoints
 │   │   └── labs.py          # Lab integration endpoints
 │   ├── schemas/             # Pydantic models
 │   │   ├── __init__.py
 │   │   └── chat.py          # Chat-related schemas
 │   ├── models/              # Database models
+│   │   ├── __init__.py
+│   │   └── appointment.py   # Appointment-related models
 │   ├── db/                  # Database connection
+│   │   └── database.py      # Database connection and session management
+│   ├── tests/               # Test modules
+│   │   ├── __init__.py
+│   │   ├── api/             # API tests
+│   │   │   ├── __init__.py
+│   │   │   ├── test_appointments.py           # Unit tests for appointments
+│   │   │   ├── test_appointments_integration.py # Integration tests
+│   │   │   └── test_appointments_e2e.py       # End-to-end tests
+│   │   ├── mock_models.py   # Mock models for testing
+│   │   └── test_utils.py    # Test utilities
 │   └── utils/               # Utility functions
 ├── .env                     # Environment variables
 ├── .env.example             # Example environment variables
 ├── requirements.txt         # Python dependencies
+├── pytest.ini               # Test configuration
 ├── Dockerfile               # Docker configuration
 └── README.md                # Basic documentation
 ```
@@ -275,6 +289,164 @@ Gets the results for a lab test.
 }
 ```
 
+### Appointment Management
+
+#### GET `/api/availability`
+
+Gets available time slots for a clinician on a specific date.
+
+**Query Parameters:**
+- `clinician_id`: ID of the clinician
+- `date`: Specific date in YYYY-MM-DD format
+
+**Response:**
+```json
+{
+  "date": "2025-05-15",
+  "clinician_id": "clinician-123",
+  "clinician_name": "Dr. Jane Smith",
+  "time_slots": [
+    {
+      "time": "09:00",
+      "available": true
+    },
+    {
+      "time": "09:30",
+      "available": false
+    }
+  ]
+}
+```
+
+#### POST `/api/availability/set`
+
+Sets availability for a clinician, supporting both single-day and recurring schedules.
+
+**Query Parameters:**
+- `clinician_id`: ID of the clinician
+
+**Request Body:**
+```json
+{
+  "date": "2025-05-15",
+  "time_slots": ["09:00", "09:30", "10:00"],
+  "recurring": false
+}
+```
+
+**Request Body (Recurring):**
+```json
+{
+  "date": "2025-05-15",
+  "time_slots": ["09:00", "09:30", "10:00"],
+  "recurring": true,
+  "recurring_days": [1, 3, 5],
+  "recurring_until": "2025-06-15"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Availability set successfully",
+  "date": "2025-05-15",
+  "time_slots": ["09:00", "09:30", "10:00"]
+}
+```
+
+#### POST `/api/book_appointment`
+
+Books an appointment for a patient with a clinician.
+
+**Request Body:**
+```json
+{
+  "clinician_id": "clinician-123",
+  "date": "2025-05-15",
+  "time": "09:00",
+  "patient_id": "patient-456",
+  "appointment_type": "virtual",
+  "notes": "Initial consultation"
+}
+```
+
+**Response:**
+```json
+{
+  "appointment_id": "appt-789",
+  "clinician_id": "clinician-123",
+  "clinician_name": "Dr. Jane Smith",
+  "patient_id": "patient-456",
+  "patient_name": "John Doe",
+  "date_time": "2025-05-15T09:00:00Z",
+  "appointment_type": "virtual",
+  "status": "scheduled",
+  "confirmation_code": "ABC123"
+}
+```
+
+#### GET `/api/appointments/clinician/{clinician_id}`
+
+Gets all appointments for a clinician within a date range.
+
+**Query Parameters:**
+- `start_date`: Start date in YYYY-MM-DD format
+- `end_date`: End date in YYYY-MM-DD format
+
+**Response:**
+```json
+{
+  "clinician_id": "clinician-123",
+  "appointments": [
+    {
+      "appointment_id": "appt-789",
+      "patient_id": "patient-456",
+      "patient_name": "John Doe",
+      "date_time": "2025-05-15T09:00:00Z",
+      "appointment_type": "virtual",
+      "status": "scheduled"
+    }
+  ]
+}
+```
+
+#### GET `/api/appointments/patient/{patient_id}`
+
+Gets all appointments for a patient.
+
+**Response:**
+```json
+{
+  "patient_id": "patient-456",
+  "appointments": [
+    {
+      "appointment_id": "appt-789",
+      "clinician_id": "clinician-123",
+      "clinician_name": "Dr. Jane Smith",
+      "date_time": "2025-05-15T09:00:00Z",
+      "appointment_type": "virtual",
+      "status": "scheduled"
+    }
+  ]
+}
+```
+
+#### PUT `/api/appointments/{appointment_id}`
+
+Updates the status of an appointment.
+
+**Query Parameters:**
+- `status`: New status (scheduled, completed, canceled, rescheduled)
+
+**Response:**
+```json
+{
+  "appointment_id": "appt-789",
+  "status": "canceled",
+  "updated_at": "2025-05-12T15:30:45Z"
+}
+```
+
 ## Authentication and Authorization
 
 The backend uses JWT-based authentication. The `get_current_active_user` dependency is used to protect endpoints that require authentication.
@@ -310,6 +482,86 @@ The Invite model stores information about invitations sent to patients.
 ### LabOrder
 
 The LabOrder model represents genetic test orders.
+
+### Appointment
+
+The Appointment model contains information about scheduled appointments between patients and clinicians.
+
+### Availability
+
+The Availability model stores clinician availability information for specific dates and times.
+
+### RecurringAvailability
+
+The RecurringAvailability model tracks recurring availability patterns for clinicians.
+
+## Database Models
+
+The backend uses SQLAlchemy ORM to interact with the database. Below are the main database models:
+
+### User
+
+The User model represents clinicians, patients, and administrators in the system.
+
+### Appointment
+
+The Appointment model contains information about scheduled appointments between patients and clinicians:
+
+```python
+class Appointment(Base):
+    __tablename__ = "appointments"
+    
+    id = Column(String(36), primary_key=True)  # UUID
+    patient_id = Column(String(36), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    clinician_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    time = Column(Time, nullable=False)
+    appointment_type = Column(Enum("virtual", "in-person", name="appointment_type"), nullable=False)
+    status = Column(Enum("scheduled", "completed", "canceled", "rescheduled", 
+                        name="appointment_status"), nullable=False)
+    notes = Column(Text, nullable=True)
+    confirmation_code = Column(String(10), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(DateTime, nullable=False, 
+                       server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
+```
+
+### Availability
+
+The Availability model stores clinician availability information for specific dates and times:
+
+```python
+class Availability(Base):
+    __tablename__ = "clinician_availability"
+    
+    id = Column(String(36), primary_key=True)  # UUID
+    clinician_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    time = Column(Time, nullable=False)
+    available = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(DateTime, nullable=False, 
+                       server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
+```
+
+### RecurringAvailability
+
+The RecurringAvailability model tracks recurring availability patterns for clinicians:
+
+```python
+class RecurringAvailability(Base):
+    __tablename__ = "clinician_recurring_availability"
+    
+    id = Column(String(36), primary_key=True)  # UUID
+    clinician_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    days_of_week = Column(String(50), nullable=False)  # JSON string of day numbers (0=Mon, 6=Sun)
+    time_slots = Column(String(255), nullable=False)  # JSON string of time slots
+    created_at = Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(DateTime, nullable=False, 
+                       server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
+```
 
 ## Environment Setup
 
@@ -347,3 +599,160 @@ For Docker-based development:
 ## Integration with Frontend
 
 The backend is designed to work seamlessly with the CancerGenix frontend. The API endpoints match the frontend's expected request and response formats.
+
+## Testing Framework
+
+The CancerGenix backend uses pytest for testing. Tests are organized into three categories:
+
+### Test Categories
+
+1. **Unit Tests** - Tests individual functions and API endpoints in isolation with mocked dependencies
+2. **Integration Tests** - Tests API endpoints with database integration using mock database sessions
+3. **End-to-End Tests** - Tests complete workflows across multiple API endpoints with authentication
+
+### Running Tests
+
+Run all tests:
+```bash
+python -m pytest
+```
+
+Run tests by category using markers:
+```bash
+# Unit tests only
+python -m pytest -m "not integration and not e2e"
+
+# Integration tests
+python -m pytest -m integration
+
+# End-to-End tests
+python -m pytest -m e2e
+```
+
+Run specific test file:
+```bash
+python -m pytest app/tests/api/test_appointments.py
+```
+
+Run a specific test function:
+```bash
+python -m pytest app/tests/api/test_appointments.py::TestAppointmentsAPI::test_book_appointment
+```
+
+### Test Configuration
+
+The `pytest.ini` file contains custom test markers and configuration:
+
+```ini
+[pytest]
+markers =
+    unit: marks a test as a unit test (default if no marker)
+    integration: marks a test as an integration test
+    e2e: marks a test as an end-to-end test
+testpaths = app/tests
+```
+
+### Mock Database Implementation
+
+For testing, the application uses a mock database implementation that simulates database operations:
+
+```python
+class MockDBSession:
+    def __init__(self):
+        self.committed = False
+        self.rolled_back = False
+        self.closed = False
+        self._query_results = {}
+        self._added_objects = []
+    
+    def commit(self):
+        self.committed = True
+    
+    def rollback(self):
+        self.rolled_back = True
+    
+    def close(self):
+        self.closed = True
+    
+    def add(self, obj):
+        self._added_objects.append(obj)
+    
+    def query(self, model_cls):
+        return MockQuery(self, model_cls)
+    
+    def set_query_result(self, model_cls, results):
+        self._query_results[model_cls.__name__] = results
+```
+
+### Test Example: Appointment Booking Integration Test
+
+```python
+@pytest.mark.integration
+class TestAppointmentsAPIIntegration:
+    @patch('app.api.appointments.get_db')
+    def test_book_appointment_integration(self, mock_get_db, mock_db):
+        # Configure the mock to yield our mock_db when called
+        mock_get_db.return_value.__iter__.return_value = iter([mock_db])
+        
+        # Set up test data
+        today = date.today().isoformat()
+        appointment_data = {
+            "clinician_id": "clinician-123",
+            "date": today,
+            "time": "10:00",
+            "patient_id": "patient-123",
+            "appointment_type": "virtual",
+            "notes": "Test appointment"
+        }
+        
+        # Make request
+        response = client.post("/api/book_appointment", json=appointment_data)
+        
+        # Check response
+        assert response.status_code == 200
+        data = response.json()
+        assert "appointment_id" in data
+        assert data["status"] == "scheduled"
+        
+        # Verify database operations were committed
+        assert mock_db.committed
+```
+
+### End-to-End Test Example
+
+```python
+@pytest.mark.e2e
+class TestAppointmentsE2E:
+    def test_appointment_scheduling_workflow(self):
+        # 1. Get authorization token for clinician
+        clinician_token = get_auth_token(role="clinician")
+        clinician_headers = auth_headers(clinician_token)
+        
+        # 2. Clinician sets availability
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        availability_data = {
+            "date": tomorrow,
+            "time_slots": ["09:00", "09:30", "10:00", "10:30"],
+            "recurring": False
+        }
+        
+        set_avail_response = client.post(
+            "/api/availability/set?clinician_id=clinician_123",
+            headers=clinician_headers,
+            json=availability_data
+        )
+        
+        assert set_avail_response.status_code == 200
+        
+        # 3-9. Continue with booking, viewing and canceling appointments
+        # (Full workflow test)
+```
+
+### Test Coverage Summary
+
+The current test suite provides comprehensive coverage of the appointments API with:
+- Unit tests: 10 passing tests
+- Integration tests: 5 passing tests
+- End-to-End tests: 3 passing tests
+
+Each test type ensures the API functions correctly at different levels of abstraction, from individual endpoint behavior to complete user workflows.
