@@ -23,9 +23,14 @@ cancer-genix-backend/
 │   │   ├── appointments.py  # Appointment scheduling endpoints
 │   │   ├── invites.py       # Patient invite endpoints
 │   │   └── labs.py          # Lab integration endpoints
-│   ├── schemas/             # Pydantic models
-│   │   ├── __init__.py
-│   │   └── chat.py          # Chat-related schemas
+│   ├── schemas/             # Pydantic models (DTOs)
+│   │   ├── __init__.py      # Schema exports
+│   │   ├── chat.py          # Chat-related schemas
+│   │   ├── users.py         # User-related schemas
+│   │   ├── appointments.py  # Appointment-related schemas
+│   │   ├── labs.py          # Lab test-related schemas
+│   │   ├── common.py        # Common utility schemas
+│   │   └── README.md        # Schema documentation
 │   ├── models/              # Database models
 │   │   ├── __init__.py
 │   │   └── appointment.py   # Appointment-related models
@@ -75,9 +80,12 @@ The CancerGenix backend follows a layered architecture pattern to separate conce
    - Defines database models using SQLAlchemy ORM
    - Represents database structure and relationships
 
-5. **Schema Layer** - Located in `app/schemas/`
+5. **Schema Layer (DTOs)** - Located in `app/schemas/`
    - Defines Pydantic models for request/response validation
    - Handles data serialization/deserialization
+   - Provides clear contracts between API and service layers
+   - Documents API input/output expectations with validation rules
+   - Creates a separation between API models and database models
 
 ### Data Flow
 
@@ -102,6 +110,54 @@ async def get_availability(
 ):
     appointment_service = AppointmentService(db)
     # Use service to handle business logic
+```
+
+### Data Transfer Objects (DTOs)
+
+The application uses Data Transfer Objects (DTOs) implemented with Pydantic models to:
+
+1. **Validate Input Data**: Automatically validate and parse input data according to defined schemas
+2. **Document API Contracts**: Provide clear input/output contracts for API endpoints
+3. **Enable API Documentation**: Generate OpenAPI documentation automatically
+4. **Separate API from Database Models**: Decouple external-facing data structures from internal models
+
+#### DTO Types
+
+For each domain entity, the application typically defines multiple DTO types:
+
+1. **Base**: Common fields shared between request and response schemas
+2. **Create**: Used for entity creation requests (POST endpoints)
+3. **Update**: Used for entity updates (PUT/PATCH endpoints)
+4. **Response**: Used for API responses, often with additional fields
+
+#### Example DTO Usage
+
+```python
+# API endpoint definition using DTOs
+@router.post("/appointments", response_model=AppointmentResponse)
+async def create_appointment(
+    appointment: AppointmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    appointment_service = AppointmentService(db)
+    return appointment_service.create_appointment(appointment)
+
+# Service using DTOs
+def create_appointment(self, appointment_data: AppointmentCreate) -> AppointmentResponse:
+    # Convert DTO to database model
+    appointment = Appointment(
+        id=str(uuid.uuid4()),
+        clinician_id=appointment_data.clinician_id,
+        date=datetime.fromisoformat(appointment_data.date),
+        # Convert and validate other fields...
+    )
+    
+    # Save through repository layer
+    created_appointment = self.repository.create_appointment(appointment)
+    
+    # Convert database model back to response DTO
+    return AppointmentResponse.from_orm(created_appointment)
 ```
 
 ## API Endpoints

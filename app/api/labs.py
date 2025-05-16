@@ -1,42 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import uuid
 from datetime import datetime
 from app.api.auth import get_current_active_user, User
+from app.schemas import (
+    LabOrderCreate, LabOrderResponse, LabResultResponse,
+    TestType, OrderStatus, ResultStatus
+)
 
 router = APIRouter(prefix="/api/labs", tags=["labs"])
 
-# Models for lab test ordering and results
-class LabTestOrder(BaseModel):
-    patient_id: str
-    test_type: str
-    provider_id: str
-    insurance_info: Optional[Dict[str, Any]] = None
-    shipping_address: Optional[Dict[str, Any]] = None
-    additional_info: Optional[Dict[str, Any]] = None
-
-class LabTestOrderResponse(BaseModel):
-    order_id: str
-    patient_id: str
-    test_type: str
-    provider_id: str
-    status: str = "pending"
-    created_at: datetime
-
-class LabResult(BaseModel):
-    order_id: str
-    result_id: str
-    test_type: str
-    status: str
-    result_summary: str
-    detailed_results: Dict[str, Any]
-    received_at: datetime
-    pdf_report_url: Optional[str] = None
-
-@router.post("/order_test", response_model=LabTestOrderResponse)
+@router.post("/order_test", response_model=LabOrderResponse)
 async def order_test(
-    test_order: LabTestOrder,
+    test_order: LabOrderCreate,
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -58,7 +34,7 @@ async def order_test(
         created_at=datetime.now()
     )
 
-@router.get("/results/{order_id}", response_model=LabResult)
+@router.get("/results/{order_id}", response_model=LabResultResponse)
 async def get_results(
     order_id: str,
     current_user: User = Depends(get_current_active_user)

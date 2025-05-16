@@ -1,6 +1,7 @@
 """
 Mock models for testing.
 """
+from datetime import datetime
 
 class Appointment:
     def __init__(self, **kwargs):
@@ -12,8 +13,9 @@ class Appointment:
         self.appointment_type = kwargs.get('appointment_type', 'virtual')
         self.status = kwargs.get('status', 'scheduled')
         self.notes = kwargs.get('notes', '')
-        self.created_at = kwargs.get('created_at')
-        self.updated_at = kwargs.get('updated_at')
+        self.confirmation_code = kwargs.get('confirmation_code', 'ABC123')
+        self.created_at = kwargs.get('created_at', datetime.now())
+        self.updated_at = kwargs.get('updated_at', datetime.now())
 
 class Availability:
     def __init__(self, **kwargs):

@@ -1,28 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from app.api.auth import get_current_active_user, User
+from app.schemas import (
+    AccountCreate, AccountResponse, AccountUpdate, AccountMetricsResponse,
+    BillingInfo, BillingUpdate, Invoice
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-# Models for account creation
-class AccountCreate(BaseModel):
-    name: str
-    domain: str
-    admin_email: EmailStr
-    admin_name: str
-    admin_password: str
-    subscription_tier: str = "standard"
-    max_users: int = 10
-    
-class AccountResponse(BaseModel):
-    id: str
-    name: str
-    domain: str
-    admin_email: EmailStr
-    subscription_tier: str
-    max_users: int
-    is_active: bool = True
 
 # Mock admin verification - in a real app, this would check admin privileges
 async def verify_super_admin(current_user: User = Depends(get_current_active_user)):

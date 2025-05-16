@@ -1,25 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from app.api.auth import get_current_active_user, User
+from app.schemas import (
+    UserCreate, UserResponse, UserUpdate, UserPasswordChange,
+    UserRole, PatientProfile, ClinicianProfile
+)
 
 router = APIRouter(prefix="/api/account", tags=["account"])
-
-# Models for user creation
-class UserCreate(BaseModel):
-    email: EmailStr
-    first_name: str
-    last_name: str
-    role: str = "user"  # Default role
-    phone: Optional[str] = None
-
-class UserResponse(BaseModel):
-    id: str
-    email: EmailStr
-    first_name: str
-    last_name: str
-    role: str
-    is_active: bool = True
     
 # Mock account admin verification - in a real app, this would check admin privileges
 async def verify_account_admin(current_user: User = Depends(get_current_active_user)):

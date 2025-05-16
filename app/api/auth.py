@@ -3,11 +3,11 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from pydantic import BaseModel
+from app.schemas import Token, TokenData, UserRole, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Mock user database
+# Mock user database - in a real app, this would be stored in a database
 USERS_DB = {
     "admin@cancergenix.com": {
         "username": "admin@cancergenix.com",
@@ -15,6 +15,8 @@ USERS_DB = {
         "email": "admin@cancergenix.com",
         "hashed_password": "fakehashedsecret",  # In a real app, use proper password hashing
         "disabled": False,
+        "user_id": "usr_admin",
+        "role": UserRole.ADMIN
     }
 }
 
@@ -23,22 +25,22 @@ SECRET_KEY = "cancergenix_development_secret_key"  # In production, use a proper
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 
-# Models
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-class User(BaseModel):
-    username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = None
+# We still need a user model for the auth workflow
+class User:
+    def __init__(self, username: str, email: Optional[str] = None, 
+                 full_name: Optional[str] = None, disabled: Optional[bool] = None,
+                 user_id: Optional[str] = None, role: Optional[UserRole] = None):
+        self.username = username
+        self.email = email
+        self.full_name = full_name
+        self.disabled = disabled
+        self.user_id = user_id
+        self.role = role
 
 class UserInDB(User):
-    hashed_password: str
+    def __init__(self, hashed_password: str, **kwargs):
+        super().__init__(**kwargs)
+        self.hashed_password = hashed_password
 
 # Utilities
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
@@ -75,15 +77,33 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        user_id: str = payload.get("user_id")
+        role: str = payload.get("role")
+        
+        if email is None:
             raise credentials_exception
-        token_data = TokenData(username=username)
+            
+        token_data = TokenData(
+            email=email,
+            user_id=user_id,
+            role=role,
+            exp=payload.get("exp")
+        )
     except JWTError:
         raise credentials_exception
-    user = get_user(USERS_DB, username=token_data.username)
+        
+    user = get_user(USERS_DB, username=email)  # Use email as username
     if user is None:
         raise credentials_exception
+        
+    # Add the role and user_id to the user object if they're not already set
+    if not hasattr(user, 'user_id') or not user.user_id:
+        user.user_id = token_data.user_id
+    
+    if not hasattr(user, 'role') or not user.role:
+        user.role = token_data.role
+        
     return user
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
@@ -103,10 +123,29 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={
+            "sub": user.username,
+            "user_id": user.user_id,
+            "role": user.role.value if user.role else UserRole.PATIENT.value
+        }, 
+        expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user_id": user.user_id,
+        "role": user.role.value if user.role else UserRole.PATIENT.value
+    }
 
-@router.get("/users/me", response_model=User)
+@router.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
+    # Convert User class instance to dict to match UserResponse schema
+    return {
+        "id": current_user.user_id,
+        "email": current_user.email,
+        "first_name": current_user.full_name.split()[0] if current_user.full_name else "",
+        "last_name": current_user.full_name.split()[1] if current_user.full_name and len(current_user.full_name.split()) > 1 else "",
+        "role": current_user.role,
+        "is_active": not current_user.disabled,
+        "phone": None  # Placeholder as we don't have this in our User class
+    }

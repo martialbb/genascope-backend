@@ -12,7 +12,11 @@ from app.services.base import BaseService
 from app.services.users import UserService
 from app.repositories.appointments import AppointmentRepository
 from app.models.appointment import Appointment, Availability, RecurringAvailability
-from app.api.appointments import TimeSlot, AppointmentRequest, ClinicianAvailabilityRequest
+from app.schemas import (
+    TimeSlot, AppointmentCreate, AvailabilityRequest, AppointmentResponse, 
+    AppointmentType, AppointmentStatus, AppointmentUpdate, AppointmentCancellation,
+    AppointmentRescheduling, AppointmentSummary
+)
 
 
 class AppointmentService(BaseService):
@@ -70,7 +74,7 @@ class AppointmentService(BaseService):
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to get availability")
     
-    def book_appointment(self, appointment_data: AppointmentRequest) -> Dict[str, Any]:
+    def book_appointment(self, appointment_data: AppointmentCreate) -> Dict[str, Any]:
         """
         Book an appointment for a patient with a clinician
         """
@@ -98,24 +102,30 @@ class AppointmentService(BaseService):
             patient_name = self.user_service.get_patient_name(appointment_data.patient_id)
             clinician_name = self.user_service.get_clinician_name(appointment_data.clinician_id)
             
-            # Format the date and time as ISO format
-            date_time = f"{appointment_data.date}T{appointment_data.time}:00Z"
+            # Format the date and time for response
+            parsed_date = datetime.strptime(appointment_data.date, "%Y-%m-%d").date()
+            parsed_time = datetime.strptime(appointment_data.time, "%H:%M").time()
+            now = datetime.now()
             
             return {
-                "appointment_id": appointment_id,
+                "id": appointment_id,  # Changed from appointment_id to id to match schema
                 "clinician_id": appointment_data.clinician_id,
                 "clinician_name": clinician_name,
                 "patient_id": appointment_data.patient_id,
                 "patient_name": patient_name,
-                "date_time": date_time,
+                "date": parsed_date,
+                "time": parsed_time,
                 "appointment_type": appointment_data.appointment_type,
-                "status": "scheduled",
-                "confirmation_code": new_appointment.confirmation_code
+                "status": AppointmentStatus.SCHEDULED,  # Using enum value instead of string
+                "notes": appointment_data.notes,
+                "confirmation_code": new_appointment.confirmation_code,
+                "created_at": now,
+                "updated_at": now
             }
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to create appointment")
     
-    def set_availability(self, clinician_id: str, availability: ClinicianAvailabilityRequest) -> Dict[str, Any]:
+    def set_availability(self, clinician_id: str, availability: AvailabilityRequest) -> Dict[str, Any]:
         """
         Set availability for a clinician
         """
@@ -150,7 +160,7 @@ class AppointmentService(BaseService):
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to set availability")
     
-    def _set_recurring_availability(self, clinician_id: str, availability: ClinicianAvailabilityRequest) -> Dict[str, Any]:
+    def _set_recurring_availability(self, clinician_id: str, availability: AvailabilityRequest) -> Dict[str, Any]:
         """
         Set recurring availability for a clinician
         """
@@ -258,7 +268,7 @@ class AppointmentService(BaseService):
                 date_time = f"{appt.date.isoformat()}T{appt.time.strftime('%H:%M')}:00Z"
                 
                 formatted_appointments.append({
-                    "appointment_id": appt.id,
+                    "id": appt.id,  # Changed from appointment_id to id
                     "clinician_id": appt.clinician_id,
                     "clinician_name": clinician_name,
                     "date_time": date_time,
@@ -273,33 +283,73 @@ class AppointmentService(BaseService):
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to retrieve patient appointments")
     
-    def update_appointment_status(self, appointment_id: str, status: str) -> Dict[str, Any]:
+    def update_appointment(self, appointment_id: str, appointment_update: "AppointmentUpdate") -> Dict[str, Any]:
         """
-        Update the status of an appointment
-        """
-        # Validate status
-        valid_statuses = ["scheduled", "completed", "canceled", "rescheduled"]
-        if status not in valid_statuses:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-            )
+        Update an appointment with new details
         
+        Args:
+            appointment_id: The ID of the appointment to update
+            appointment_update: The update data containing new values
+            
+        Returns:
+            The updated appointment data
+        """
         try:
-            # Get appointment from repository
+            # Retrieve the appointment
             appointment = self.repository.get_appointment_by_id(appointment_id)
             if not appointment:
-                raise HTTPException(status_code=404, detail="Appointment not found")
+                raise HTTPException(status_code=404, detail=f"Appointment with ID {appointment_id} not found")
+                
+            # Update fields if provided
+            if appointment_update.date:
+                try:
+                    appointment.date = datetime.strptime(appointment_update.date, "%Y-%m-%d").date()
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+                    
+            if appointment_update.time:
+                try:
+                    appointment.time = datetime.strptime(appointment_update.time, "%H:%M").time()
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid time format. Use 24-hour format HH:MM")
+                    
+            if appointment_update.appointment_type:
+                appointment.appointment_type = appointment_update.appointment_type.value
+                
+            if appointment_update.status:
+                appointment.status = appointment_update.status.value
+                
+            if appointment_update.notes is not None:  # Allow empty string to clear notes
+                appointment.notes = appointment_update.notes
+                
+            # Update the timestamp
+            appointment.updated_at = datetime.utcnow()
             
-            # Update status
-            appointment.status = status
-            self.repository.update_appointment(appointment)
+            # Save changes
+            updated_appointment = self.repository.update_appointment(appointment)
+            
+            # Format response using the AppointmentResponse model
+            clinician_name = self.user_service.get_clinician_name(updated_appointment.clinician_id)
+            patient_name = self.user_service.get_patient_name(updated_appointment.patient_id)
             
             return {
-                "appointment_id": appointment_id,
-                "status": status,
-                "updated_at": datetime.now().isoformat()
+                "id": updated_appointment.id,
+                "clinician_id": updated_appointment.clinician_id,
+                "clinician_name": clinician_name,
+                "patient_id": updated_appointment.patient_id,
+                "patient_name": patient_name,
+                "date": updated_appointment.date,
+                "time": updated_appointment.time,
+                "appointment_type": updated_appointment.appointment_type,
+                "status": updated_appointment.status,
+                "notes": updated_appointment.notes,
+                "confirmation_code": getattr(updated_appointment, "confirmation_code", ""),
+                "created_at": updated_appointment.created_at,
+                "updated_at": updated_appointment.updated_at
             }
+            
+        except HTTPException as e:
+            raise e
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to update appointment")
     
