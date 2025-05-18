@@ -9,6 +9,9 @@ from unittest.mock import patch, MagicMock
 from app.main import app
 from app.api.auth import get_current_active_user
 
+# Import our fixtures
+from ...fixtures.api_fixtures import override_auth_dependency
+
 client = TestClient(app)
 
 # Mock authenticated user for tests
@@ -19,13 +22,16 @@ mock_user = {
     "role": "clinician"
 }
 
-# Override the dependency
+# Override the dependency - kept for backward compatibility
+# In future tests, use the override_auth_dependency fixture instead
 @pytest.fixture(autouse=True)
 def override_auth():
     app.dependency_overrides[get_current_active_user] = lambda: mock_user
     yield
     app.dependency_overrides = {}
 
+@pytest.mark.unit
+@pytest.mark.api
 def test_simple_book_appointment():
     """Simplified test to isolate the issue"""
     
@@ -93,6 +99,8 @@ def test_simple_book_appointment():
         data = response.json()
         assert "id" in data
         
+@pytest.mark.unit
+@pytest.mark.api
 def test_mock_patch_book_appointment():
     """Even simpler test using mock.patch directly"""
     
