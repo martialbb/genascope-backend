@@ -1,19 +1,36 @@
-# CancerGenix Backend Documentation
+# Genascope Backend Documentation
+
+> Last Updated: May 18, 2025
+>
+> Recent Updates:
+> - Updated project structure to reflect current organization
+> - Added information about the symbolic link between repositories
+> - Enhanced testing documentation
+> - Added detailed section on Patient Invite System
+> - Fixed SQLAlchemy relationship issue in PatientInvite model
 
 ## Overview
 
-The CancerGenix backend is a FastAPI-based application that provides RESTful API endpoints to support the CancerGenix frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, and lab integrations.
+The Genascope backend is a FastAPI-based application that provides RESTful API endpoints to support the Genascope frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, lab integrations, appointment scheduling, and patient invitations.
+
+## Repository Setup
+
+The backend is set up as a separate repository with a symbolic link from the frontend repository:
+
+1. **Main Backend Repository**: `/Users/martial-m1/cancer-genix-backend`
+2. **Symbolic Link**: `/Users/martial-m1/cancer-genix-frontend/backend` → `/Users/martial-m1/cancer-genix-backend`
+
+This setup allows for independent development and deployment of the backend while maintaining convenient access from the frontend repository.
 
 ## Project Structure
 
-The project follows a typical FastAPI project structure:
+The project follows a structured, layered architecture pattern:
 
 ```
 cancer-genix-backend/
 ├── app/
-│   ├── __init__.py
 │   ├── main.py              # Main FastAPI application entry point
-│   ├── api/                 # API modules
+│   ├── api/                 # API modules (controllers)
 │   │   ├── __init__.py      # Router registration
 │   │   ├── auth.py          # Authentication endpoints
 │   │   ├── chat.py          # Chat endpoints
@@ -22,9 +39,29 @@ cancer-genix-backend/
 │   │   ├── account.py       # Account management endpoints
 │   │   ├── appointments.py  # Appointment scheduling endpoints
 │   │   ├── invites.py       # Patient invite endpoints
-│   │   └── labs.py          # Lab integration endpoints
+│   │   ├── labs.py          # Lab integration endpoints
+│   │   └── users.py         # User management endpoints
+│   ├── services/            # Business logic layer
+│   │   ├── __init__.py
+│   │   ├── base.py          # Base service class
+│   │   ├── appointments.py  # Appointment-related business logic
+│   │   ├── chat.py          # Chat-related business logic
+│   │   ├── invites.py       # Patient invitation business logic
+│   │   ├── labs.py          # Lab integration business logic
+│   │   ├── labs_enhanced.py # Enhanced lab integration features
+│   │   ├── users.py         # User management business logic
+│   │   └── README.md        # Service documentation
+│   ├── repositories/        # Data access layer
+│   │   ├── __init__.py
+│   │   ├── base.py          # Base repository class
+│   │   ├── appointments.py  # Appointment database operations
+│   │   ├── chat.py          # Chat database operations
+│   │   ├── invites.py       # Patient invite database operations
+│   │   ├── labs.py          # Lab test database operations
+│   │   ├── users.py         # User database operations
+│   │   └── README.md        # Repository documentation
 │   ├── schemas/             # Pydantic models (DTOs)
-│   │   ├── __init__.py      # Schema exports
+│   │   ├── __init__.py
 │   │   ├── chat.py          # Chat-related schemas
 │   │   ├── users.py         # User-related schemas
 │   │   ├── appointments.py  # Appointment-related schemas
@@ -33,30 +70,49 @@ cancer-genix-backend/
 │   │   └── README.md        # Schema documentation
 │   ├── models/              # Database models
 │   │   ├── __init__.py
-│   │   └── appointment.py   # Appointment-related models
+│   │   ├── user.py          # User-related models
+│   │   ├── appointment.py   # Appointment-related models
+│   │   ├── chat.py          # Chat-related models
+│   │   ├── invite.py        # Patient invite models
+│   │   └── lab.py           # Lab test-related models
 │   ├── db/                  # Database connection
 │   │   └── database.py      # Database connection and session management
+│   ├── core/                # Core application functionality
+│   │   └── config.py        # Configuration settings
 │   ├── tests/               # Test modules
 │   │   ├── __init__.py
-│   │   ├── api/             # API tests
-│   │   │   ├── __init__.py
-│   │   │   ├── test_appointments.py           # Unit tests for appointments
-│   │   │   ├── test_appointments_integration.py # Integration tests
-│   │   │   └── test_appointments_e2e.py       # End-to-end tests
+│   │   ├── conftest.py      # Common test fixtures
 │   │   ├── mock_models.py   # Mock models for testing
-│   │   └── test_utils.py    # Test utilities
-│   └── utils/               # Utility functions
+│   │   ├── test_utils.py    # Testing utilities
+│   │   ├── utils.py         # Helper functions for tests
+│   │   ├── fixtures/        # Test fixtures
+│   │   ├── unit/            # Unit tests
+│   │   │   ├── api/         # API unit tests
+│   │   │   ├── models/      # Model unit tests
+│   │   │   ├── repositories/ # Repository unit tests
+│   │   │   ├── services/    # Service unit tests
+│   │   │   └── utils/       # Utility unit tests
+│   │   ├── integration/     # Integration tests
+│   │   ├── e2e/             # End-to-end tests
+│   │   └── README.md        # Test documentation
+├── alembic/                 # Database migration scripts
 ├── .env                     # Environment variables
 ├── .env.example             # Example environment variables
 ├── requirements.txt         # Python dependencies
 ├── pytest.ini               # Test configuration
 ├── Dockerfile               # Docker configuration
+├── docker-compose.yml       # Docker Compose configuration
+├── run_tests.sh             # Script to run all tests
+├── run_tests_updated.sh     # Updated test runner script
+├── BACKEND_DOCUMENTATION.md # Comprehensive backend documentation
+├── PATIENT_INVITE_DOCUMENTATION.md # Patient invite feature documentation
+├── TEST_RESULTS.md          # Test results documentation
 └── README.md                # Basic documentation
 ```
 
 ## Architecture
 
-The CancerGenix backend follows a layered architecture pattern to separate concerns and maintain a modular, maintainable codebase.
+The Genascope backend follows a layered architecture pattern to separate concerns and maintain a modular, maintainable codebase.
 
 ### Layers
 
@@ -70,15 +126,18 @@ The CancerGenix backend follows a layered architecture pattern to separate conce
    - Orchestrates operations between repositories
    - Handles transactions
    - Implements domain-specific validation rules
+   - Provides methods for core operations (invite management, appointment scheduling, etc.)
 
 3. **Repository Layer** - Located in `app/repositories/`
    - Abstracts data access operations
    - Provides methods for CRUD operations on database entities
    - Hides SQL/ORM complexity from services
+   - Handles entity-specific database queries (e.g., retrieving active invites)
 
 4. **Model Layer** - Located in `app/models/`
    - Defines database models using SQLAlchemy ORM
    - Represents database structure and relationships
+   - Includes models for users, appointments, invites, lab tests, etc.
 
 5. **Schema Layer (DTOs)** - Located in `app/schemas/`
    - Defines Pydantic models for request/response validation
@@ -98,7 +157,79 @@ Response    ←    Schemas    ←    Domain Logic ← Database Models
 
 ### Dependency Injection
 
-The application uses FastAPI's dependency injection system to provide services with the resources they need:
+The application uses FastAPI's dependency injection system to provide services with the resources they need.
+
+## Testing Structure
+
+The Genascope backend has a comprehensive testing strategy organized as follows:
+
+```
+app/tests/
+├── fixtures/               # Reusable test fixtures
+│   ├── invite_fixtures.py  # Fixtures for invite tests
+│   ├── user_fixtures.py    # Fixtures for user tests
+│   └── ...
+├── unit/                   # Unit tests
+│   ├── repositories/       # Repository unit tests
+│   │   ├── test_invite_repository.py
+│   │   └── ...
+│   ├── services/           # Service unit tests
+│   │   ├── test_invite_service.py
+│   │   ├── test_invite_service_additional.py
+│   │   └── ...
+│   └── ...
+├── integration/            # Integration tests
+└── e2e/                    # End-to-end tests
+```
+
+### Types of Tests
+
+1. **Unit Tests**: Testing individual components in isolation (repositories, services)
+2. **Integration Tests**: Testing interactions between components
+3. **End-to-End Tests**: Testing complete workflows from API to database
+
+### Running Tests
+
+Use the provided scripts to run the tests:
+
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run with specific markers or patterns
+pytest app/tests/unit/services/test_invite_service.py -v
+```
+
+## Key Features
+
+### Patient Invite System
+
+The Patient Invite System allows clinicians to invite patients to join the platform. The key components are:
+
+1. **Models**: 
+   - `PatientInvite`: Represents an invitation with attributes like email, token, status, and expiration date
+   - Relationship with `User` model for linking invites to clinicians
+
+2. **Repository Layer**: 
+   - `InviteRepository`: Handles CRUD operations for patient invites
+   - Methods include `get_by_token()`, `get_active_by_email()`, `create_invite()`, `revoke_invite()`, etc.
+
+3. **Service Layer**: 
+   - `InviteService`: Contains business logic for creating, verifying, accepting, and revoking invites
+   - Manages invite statuses (pending, accepted, expired, revoked)
+   - Generates secure invitation tokens and URLs
+
+4. **API Layer**: 
+   - `invites.py`: Endpoints for managing invitations
+   - Authentication and authorization checks
+
+5. **Flow**:
+   - Clinician generates an invite for a patient
+   - System sends the invite link to the patient via email
+   - Patient follows the link and creates an account
+   - Invite status is updated to "accepted"
+
+Detailed documentation of the Patient Invite System can be found in `PATIENT_INVITE_DOCUMENTATION.md`.
 
 ```python
 @router.get("/availability")
@@ -681,7 +812,7 @@ class RecurringAvailability(Base):
 Create a `.env` file based on the `.env.example` template:
 
 ```
-DATABASE_URL=mysql+pymysql://user:password@db:3306/cancergenix
+DATABASE_URL=mysql+pymysql://user:password@db:3306/genascope
 JWT_SECRET=your_jwt_secret_key
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
@@ -709,11 +840,11 @@ For Docker-based development:
 
 ## Integration with Frontend
 
-The backend is designed to work seamlessly with the CancerGenix frontend. The API endpoints match the frontend's expected request and response formats.
+The backend is designed to work seamlessly with the Genascope frontend. The API endpoints match the frontend's expected request and response formats.
 
 ## Testing Framework
 
-The CancerGenix backend uses pytest for testing. Tests are organized into three categories:
+The Genascope backend uses pytest for testing. Tests are organized into three categories:
 
 ### Test Categories
 

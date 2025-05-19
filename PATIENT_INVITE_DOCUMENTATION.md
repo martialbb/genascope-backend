@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Patient Invite System allows clinicians and physicians to generate unique invite links for patients. These links provide patients with secure access to the CancerGenix risk assessment chat interface.
+The Patient Invite System allows clinicians and physicians to generate unique invite links for patients. These links provide patients with secure access to the Genascope risk assessment chat interface.
 
 ## Backend Implementation
 
