@@ -5,12 +5,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from datetime import datetime, timedelta
-import uuid
 
-# We'll use mocks instead of actual models
-# from app.models.invite import PatientInvite
-from app.schemas import UserRole
-# from app.models.user import User, UserRole
+from app.services.invites import InviteService
+from app.models.invite import PatientInvite
+from app.models.user import User, UserRole
 
 
 @pytest.fixture
@@ -22,9 +20,6 @@ def mock_db():
 @pytest.fixture
 def invite_service(mock_db):
     """Create an InviteService instance with mock repositories"""
-    # Import here to avoid SQLAlchemy initialization issues
-    from app.services.invites import InviteService
-    
     service = InviteService(mock_db)
     service.invite_repository = MagicMock()
     service.user_repository = MagicMock()
@@ -36,11 +31,7 @@ def test_create_invite(invite_service):
     """Test creating a new patient invitation"""
     # Arrange
     clinician_id = "test-clinician-id"
-    clinician = MagicMock()
-    clinician.id = clinician_id
-    clinician.email = "clinician@example.com"
-    clinician.name = "Test Clinician"
-    clinician.role = UserRole.CLINICIAN  # Using enum value instead of string
+    clinician = User(id=clinician_id, email="clinician@example.com", name="Test Clinician", role=UserRole.CLINICIAN)
     
     invite_data = {
         "email": "patient@example.com",
@@ -51,18 +42,19 @@ def test_create_invite(invite_service):
         "custom_message": "Please join our practice"
     }
     
-    mock_invite = MagicMock()
-    mock_invite.id = "test-invite-id"
-    mock_invite.email = invite_data["email"]
-    mock_invite.first_name = invite_data["first_name"]
-    mock_invite.last_name = invite_data["last_name"]
-    mock_invite.phone = invite_data["phone"]
-    mock_invite.clinician_id = clinician_id
-    mock_invite.invite_token = "test-token"
-    mock_invite.status = "pending"
-    mock_invite.custom_message = invite_data["custom_message"]
-    mock_invite.created_at = datetime.utcnow()
-    mock_invite.expires_at = datetime.utcnow() + timedelta(days=14)
+    mock_invite = PatientInvite(
+        id="test-invite-id",
+        email=invite_data["email"],
+        first_name=invite_data["first_name"],
+        last_name=invite_data["last_name"],
+        phone=invite_data["phone"],
+        clinician_id=clinician_id,
+        invite_token="test-token",
+        status="pending",
+        custom_message=invite_data["custom_message"],
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=14)
+    )
     
     invite_service.user_repository.get_by_id.return_value = clinician
     invite_service.invite_repository.get_active_by_email.return_value = None
@@ -104,11 +96,7 @@ def test_create_invite_existing_invite(invite_service):
     """Test handling existing invite for the same email"""
     # Arrange
     clinician_id = "test-clinician-id"
-    clinician = MagicMock()
-    clinician.id = clinician_id
-    clinician.email = "clinician@example.com"
-    clinician.name = "Test Clinician"
-    clinician.role = UserRole.CLINICIAN
+    clinician = User(id=clinician_id, email="clinician@example.com", name="Test Clinician", role=UserRole.CLINICIAN)
     
     invite_data = {
         "email": "patient@example.com",
@@ -117,16 +105,17 @@ def test_create_invite_existing_invite(invite_service):
         "clinician_id": clinician_id
     }
     
-    existing_invite = MagicMock()
-    existing_invite.id="existing-invite-id"
-    existing_invite.email=invite_data["email"]
-    existing_invite.first_name=invite_data["first_name"]
-    existing_invite.last_name=invite_data["last_name"]
-    existing_invite.clinician_id=clinician_id
-    existing_invite.invite_token="existing-token"
-    existing_invite.status="pending"
-    existing_invite.created_at=datetime.utcnow()
-    existing_invite.expires_at=datetime.utcnow() + timedelta(days=14)
+    existing_invite = PatientInvite(
+        id="existing-invite-id",
+        email=invite_data["email"],
+        first_name=invite_data["first_name"],
+        last_name=invite_data["last_name"],
+        clinician_id=clinician_id,
+        invite_token="existing-token",
+        status="pending",
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=14)
+    )
     
     invite_service.user_repository.get_by_id.return_value = clinician
     invite_service.invite_repository.get_active_by_email.return_value = existing_invite
@@ -145,16 +134,17 @@ def test_verify_invite_valid(invite_service):
     """Test verifying a valid invitation token"""
     # Arrange
     token = "valid-token"
-    mock_invite = MagicMock()
-    mock_invite.id = "test-invite-id"
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = token
-    mock_invite.status = "pending"
-    mock_invite.created_at = datetime.utcnow()
-    mock_invite.expires_at = datetime.utcnow() + timedelta(days=14)
+    mock_invite = PatientInvite(
+        id="test-invite-id",
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token=token,
+        status="pending",
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=14)
+    )
     
     invite_service.invite_repository.get_by_token.return_value = mock_invite
     
@@ -188,16 +178,17 @@ def test_verify_invite_non_pending_status(invite_service):
     """Test verifying a token with non-pending status"""
     # Arrange
     token = "accepted-token"
-    mock_invite = MagicMock()
-    mock_invite.id = "test-invite-id"
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = token
-    mock_invite.status = "accepted"  # Already accepted
-    mock_invite.created_at = datetime.utcnow()
-    mock_invite.expires_at = datetime.utcnow() + timedelta(days=14)
+    mock_invite = PatientInvite(
+        id="test-invite-id",
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token=token,
+        status="accepted",  # Already accepted
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=14)
+    )
     
     invite_service.invite_repository.get_by_token.return_value = mock_invite
     
@@ -215,16 +206,17 @@ def test_verify_invite_expired(invite_service):
     """Test verifying an expired invitation token"""
     # Arrange
     token = "expired-token"
-    mock_invite = MagicMock()
-    mock_invite.id = "test-invite-id"
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = token
-    mock_invite.status = "pending"
-    mock_invite.created_at = datetime.utcnow() - timedelta(days=15)
-    mock_invite.expires_at = datetime.utcnow() - timedelta(days=1)  # Expired
+    mock_invite = PatientInvite(
+        id="test-invite-id",
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token=token,
+        status="pending",
+        created_at=datetime.utcnow() - timedelta(days=15),
+        expires_at=datetime.utcnow() - timedelta(days=1)  # Expired
+    )
     
     invite_service.invite_repository.get_by_token.return_value = mock_invite
     
@@ -243,30 +235,30 @@ def test_accept_invite(invite_service):
     """Test accepting an invitation and creating a patient account"""
     # Arrange
     invite_id = "test-invite-id"
-    mock_invite = MagicMock()
-    mock_invite.id = invite_id
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = "test-token"
-    mock_invite.status = "pending"
-    mock_invite.created_at = datetime.utcnow()
-    mock_invite.expires_at = datetime.utcnow() + timedelta(days=14)
+    mock_invite = PatientInvite(
+        id=invite_id,
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token="test-token",
+        status="pending",
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=14)
+    )
     
     user_data = {
         "password": "securepassword",
         "date_of_birth": "1980-01-01"
     }
     
-    mock_user = MagicMock()
-    mock_user.id="new-patient-id"
-    mock_user.email=mock_invite.email
-    mock_user.name=f"{mock_invite.first_name} {mock_invite.last_name}"
-    mock_user.role=UserRole.PATIENT
-
     mock_patient = {
-        "user": mock_user,
+        "user": User(
+            id="new-patient-id",
+            email=mock_invite.email,
+            name=f"{mock_invite.first_name} {mock_invite.last_name}",
+            role=UserRole.PATIENT
+        ),
         "profile": {
             "date_of_birth": user_data["date_of_birth"],
             "phone_number": mock_invite.phone
@@ -322,16 +314,17 @@ def test_accept_invite_non_pending_status(invite_service):
     """Test exception when invite is not pending"""
     # Arrange
     invite_id = "expired-invite-id"
-    mock_invite = MagicMock()
-    mock_invite.id = invite_id
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = "test-token"
-    mock_invite.status = "expired"  # Not pending
-    mock_invite.created_at = datetime.utcnow()
-    mock_invite.expires_at = datetime.utcnow() - timedelta(days=1)
+    mock_invite = PatientInvite(
+        id=invite_id,
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token="test-token",
+        status="expired",  # Not pending
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() - timedelta(days=1)
+    )
     
     user_data = {"password": "securepassword"}
     
@@ -349,16 +342,17 @@ def test_accept_invite_expired(invite_service):
     """Test exception when invite is expired"""
     # Arrange
     invite_id = "expired-invite-id"
-    mock_invite = MagicMock()
-    mock_invite.id = invite_id
-    mock_invite.email = "patient@example.com"
-    mock_invite.first_name = "John"
-    mock_invite.last_name = "Doe"
-    mock_invite.clinician_id = "test-clinician-id"
-    mock_invite.invite_token = "test-token"
-    mock_invite.status = "pending"
-    mock_invite.created_at = datetime.utcnow() - timedelta(days=15)
-    mock_invite.expires_at = datetime.utcnow() - timedelta(days=1)  # Expired
+    mock_invite = PatientInvite(
+        id=invite_id,
+        email="patient@example.com",
+        first_name="John",
+        last_name="Doe",
+        clinician_id="test-clinician-id",
+        invite_token="test-token",
+        status="pending",
+        created_at=datetime.utcnow() - timedelta(days=15),
+        expires_at=datetime.utcnow() - timedelta(days=1)  # Expired
+    )
     
     user_data = {"password": "securepassword"}
     

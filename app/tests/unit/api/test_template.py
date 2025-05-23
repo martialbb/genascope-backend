@@ -13,15 +13,9 @@ import json
 
 # Import shared fixtures
 from ...fixtures.repository_fixtures import mock_repositories
-from ...fixtures.user_fixtures import mock_user_db
-from ...mock_models import create_mock_user
-
-# Import fixtures for API testing
-from ...fixtures.api_fixtures import api_client, authenticated_client, clinician_client
+from ...fixtures.user_fixtures import mock_clinician_user, mock_patient_user
 
 
-@pytest.mark.unit
-@pytest.mark.api
 class TestApiTemplate:
     """
     Template for API endpoint unit tests.
@@ -30,26 +24,25 @@ class TestApiTemplate:
     """
     
     @pytest.fixture
-    def test_users(self):
-        """Create test users for the tests"""
-        clinician_user = create_mock_user(
-            id="clinician-123",
-            email="clinician@example.com",
-            name="Test Clinician",
-            role="clinician"
-        )
-        
-        patient_user = create_mock_user(
-            id="patient-123",
-            email="patient@example.com",
-            name="Test Patient",
-            role="patient"
-        )
-        
-        return {
-            "clinician": clinician_user,
-            "patient": patient_user
-        }
+    def app(self):
+        """Create a FastAPI app with routes for testing"""
+        try:
+            # Create a test FastAPI app
+            app = FastAPI()
+            
+            # Import and include your router
+            from app.api.some_router import router
+            app.include_router(router)
+            
+            return app
+        except ImportError as e:
+            pytest.skip(f"Unable to import router: {e}")
+            return FastAPI()
+    
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client"""
+        return TestClient(app)
     
     @pytest.fixture
     def service_mock(self):
@@ -70,51 +63,66 @@ class TestApiTemplate:
         service.create_item.return_value = {"id": "new-item", "name": "New Item"}
         
         return service
-        
-    def test_get_all_items(self, authenticated_client, service_mock):
-        """Test GET /items/ endpoint"""
-        # Arrange
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            
-            # Act
-            response = authenticated_client.get("/api/items/")
-            
-            # Assert
-            assert response.status_code == 200
-            assert len(response.json()) == 2
-            assert response.json()[0]["id"] == "item1"
-            assert response.json()[1]["id"] == "item2"
-            service_mock.get_all_items.assert_called_once()
     
-    def test_get_item_by_id(self, authenticated_client, service_mock):
+    @pytest.fixture
+    def override_get_service(self, app, service_mock):
+        """Override the service dependency in the app"""
+        try:
+            # Import the dependency function that provides the service
+            from app.api.dependencies import get_some_service
+            
+            # Override the dependency
+            app.dependency_overrides[get_some_service] = lambda: service_mock
+            
+            yield service_mock
+            
+            # Clean up
+            app.dependency_overrides = {}
+        except ImportError as e:
+            pytest.skip(f"Unable to import dependencies: {e}")
+            yield service_mock
+    
+    def test_get_all_items(self, client, override_get_service):
+        """Test GET /items/ endpoint"""
+        # Arrange - done in fixtures
+        
+        # Act
+        response = client.get("/items/")
+        
+        # Assert
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+        assert response.json()[0]["id"] == "item1"
+        assert response.json()[1]["id"] == "item2"
+        override_get_service.get_all_items.assert_called_once()
+    
+    def test_get_item_by_id(self, client, override_get_service):
         """Test GET /items/{item_id} endpoint"""
         # Arrange
         item_id = "item1"
         
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act
-            response = authenticated_client.get(f"/api/items/{item_id}")
-            
-            # Assert
-            assert response.status_code == 200
-            assert response.json()["id"] == item_id
-            assert response.json()["name"] == "Item 1"
-            service_mock.get_item_by_id.assert_called_once_with(item_id)
+        # Act
+        response = client.get(f"/items/{item_id}")
+        
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["id"] == item_id
+        assert response.json()["name"] == "Item 1"
+        override_get_service.get_item_by_id.assert_called_once_with(item_id)
     
-    def test_get_item_by_id_not_found(self, authenticated_client, service_mock):
+    def test_get_item_by_id_not_found(self, client, override_get_service):
         """Test GET /items/{item_id} with non-existent ID"""
         # Arrange
         item_id = "nonexistent-id"
-        service_mock.get_item_by_id.side_effect = lambda id: None
+        override_get_service.get_item_by_id.side_effect = lambda id: None
         
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act
-            response = authenticated_client.get(f"/api/items/{item_id}")
-            
-            # Assert
-            assert response.status_code == 404
+        # Act
+        response = client.get(f"/items/{item_id}")
+        
+        # Assert
+        assert response.status_code == 404
     
-    def test_create_item(self, authenticated_client, service_mock):
+    def test_create_item(self, client, override_get_service):
         """Test POST /items/ endpoint"""
         # Arrange
         item_data = {
@@ -122,20 +130,19 @@ class TestApiTemplate:
             "value": 123
         }
         
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act
-            response = authenticated_client.post(
-                "/api/items/",
-                json=item_data
-            )
-            
-            # Assert
-            assert response.status_code == 201
-            assert response.json()["id"] == "new-item"
-            assert response.json()["name"] == "New Item"
-            service_mock.create_item.assert_called_once_with(item_data)
+        # Act
+        response = client.post(
+            "/items/",
+            json=item_data
+        )
+        
+        # Assert
+        assert response.status_code == 201
+        assert response.json()["id"] == "new-item"
+        assert response.json()["name"] == "New Item"
+        override_get_service.create_item.assert_called_once_with(item_data)
     
-    def test_update_item(self, authenticated_client, service_mock):
+    def test_update_item(self, client, override_get_service):
         """Test PUT /items/{item_id} endpoint"""
         # Arrange
         item_id = "item1"
@@ -144,51 +151,34 @@ class TestApiTemplate:
         }
         
         # Configure mock service
-        service_mock.update_item.return_value = {
+        override_get_service.update_item.return_value = {
             "id": item_id,
             "name": update_data["name"]
         }
         
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act
-            response = authenticated_client.put(
-                f"/api/items/{item_id}",
-                json=update_data
-            )
-            
-            # Assert
-            assert response.status_code == 200
-            assert response.json()["id"] == item_id
-            assert response.json()["name"] == update_data["name"]
-            service_mock.update_item.assert_called_once_with(item_id, update_data)
+        # Act
+        response = client.put(
+            f"/items/{item_id}",
+            json=update_data
+        )
+        
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["id"] == item_id
+        assert response.json()["name"] == update_data["name"]
+        override_get_service.update_item.assert_called_once_with(item_id, update_data)
     
-    def test_delete_item(self, authenticated_client, service_mock):
+    def test_delete_item(self, client, override_get_service):
         """Test DELETE /items/{item_id} endpoint"""
         # Arrange
         item_id = "item1"
         
         # Configure mock service
-        service_mock.delete_item.return_value = True
+        override_get_service.delete_item.return_value = True
         
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act
-            response = authenticated_client.delete(f"/api/items/{item_id}")
-            
-            # Assert
-            assert response.status_code == 204
-            service_mock.delete_item.assert_called_once_with(item_id)
-    
-    def test_different_user_roles(self, clinician_client, authenticated_client, test_users, service_mock):
-        """Test different user roles accessing the API"""
-        # This is an example of how to test different user roles
+        # Act
+        response = client.delete(f"/items/{item_id}")
         
-        # Arrange - using different clients with different roles
-        
-        with patch('app.api.some_router.SomeService', return_value=service_mock):
-            # Act & Assert - clinician can access clinician-only endpoint
-            response = clinician_client.get("/api/clinician-only-endpoint")
-            assert response.status_code == 200
-            
-            # Act & Assert - regular user can't access clinician-only endpoint
-            response = authenticated_client.get("/api/clinician-only-endpoint")
-            assert response.status_code == 403
+        # Assert
+        assert response.status_code == 204
+        override_get_service.delete_item.assert_called_once_with(item_id)

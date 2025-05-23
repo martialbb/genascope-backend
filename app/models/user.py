@@ -1,9 +1,9 @@
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Integer, Enum
+from app.db.database import Base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 import enum
-from app.db.database import Base  # Import Base from database.py instead of defining a new one
 
 class UserRole(str, enum.Enum):
     PATIENT = "patient"
@@ -66,3 +66,10 @@ class PatientProfile(Base):
     
     # Relationships
     user = relationship("User")
+
+class UserProfile:
+    def __init__(self, id, user_id, **kwargs):
+        self.id = id
+        self.user_id = user_id
+        for k, v in kwargs.items():
+            setattr(self, k, v)

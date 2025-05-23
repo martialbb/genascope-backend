@@ -143,7 +143,6 @@ def past_date(days=7):
 
 @pytest.fixture
 def mock_time_slots():
-    """Return mock time slots for testing"""
     return {
         "time_slots": [
             {"time": "09:00", "available": True},

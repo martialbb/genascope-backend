@@ -4,7 +4,7 @@ Pydantic schema models for common data transfer objects.
 These schemas define the structure for general-purpose request and response payloads
 used across multiple parts of the application.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any, Generic, TypeVar, Union
 from enum import Enum
 
@@ -21,12 +21,30 @@ class ErrorResponse(BaseModel):
     detail: Union[str, List[ErrorDetail]]
     status_code: int
     error_type: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuccessResponse(BaseModel):
     """Schema for simple success responses"""
     message: str
     status_code: int = 200
+    data: Optional[Dict[str, Any]] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Token(BaseModel):
+    """Schema for JWT access token response"""
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    """Schema for JWT token payload data"""
+    username: str
+    user_id: str
+    role: Optional[str] = None
 
 
 T = TypeVar('T')

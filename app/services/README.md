@@ -1,6 +1,6 @@
 # Service Layer Architecture
 
-This folder contains the service layer for the CancerGenix backend application. The service layer sits between the API controllers and the data access layer (repositories).
+This folder contains the service layer for the Genascope backend application. The service layer sits between the API controllers and the data access layer (repositories).
 
 ## Architecture Overview
 

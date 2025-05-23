@@ -1,6 +1,6 @@
 # Testing Organization
 
-This directory contains all the tests for the CancerGenix backend application. Tests are organized by testing level and by module.
+This directory contains all the tests for the Genascope backend application. Tests are organized by testing level and by module.
 
 ## Test Structure
 

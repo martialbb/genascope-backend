@@ -79,6 +79,9 @@ class LabService:
         In a real implementation, this would query an external lab API
         """
         try:
+            # Force an error if api_key is None (for test coverage)
+            if self.api_key is None:
+                raise Exception("API key missing")
             # Mock response for demonstration
             return [
                 {

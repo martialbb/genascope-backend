@@ -1,6 +1,6 @@
 # Schema Models / DTOs
 
-This directory contains Pydantic schema models that serve as Data Transfer Objects (DTOs) for the CancerGenix application.
+This directory contains Pydantic schema models that serve as Data Transfer Objects (DTOs) for the Genascope application.
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Repository Layer Architecture
 
-This folder contains the repository layer for the CancerGenix backend application. The repository layer is responsible for data access and abstraction of the database operations.
+This folder contains the repository layer for the Genascope backend application. The repository layer is responsible for data access and abstraction of the database operations.
 
 ## Repository Layer Responsibilities
 

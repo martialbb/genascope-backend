@@ -1,0 +1,143 @@
+from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
+from app.models.user import User, Account, PatientProfile, UserRole
+from app.repositories.base import BaseRepository
+
+class UserRepository(BaseRepository):
+    """
+    Repository for User entity operations
+    """
+    def __init__(self, db: Session):
+        super().__init__(db, User)
+    
+    def get_by_email(self, email: str) -> Optional[User]:
+        """Get a user by email address"""
+        return self.db.query(User).filter(User.email == email).first()
+    
+    def get_by_id(self, id: str) -> Optional[User]:
+        """Get a user by ID"""
+        return self.db.query(User).filter(User.id == id).first()
+    
+    def get_users_by_account(self, account_id: str) -> List[User]:
+        """Get all users for a specific account"""
+        return self.db.query(User).filter(User.account_id == account_id).all()
+    
+    def get_users_by_role(self, role: UserRole) -> List[User]:
+        """Get all users with a specific role"""
+        return self.db.query(User).filter(User.role == role).all()
+    
+    def get_patients_by_clinician(self, clinician_id: str) -> List[User]:
+        """Get all patients assigned to a specific clinician"""
+        return self.db.query(User).filter(
+            and_(User.clinician_id == clinician_id, User.role == UserRole.PATIENT)
+        ).all()
+    
+    def create_user(self, user_data: Dict[str, Any]) -> User:
+        """Create a new user"""
+        user = User(**user_data)
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+    
+    def update_user(self, user_id: str, user_data: Dict[str, Any]) -> Optional[User]:
+        """Update an existing user"""
+        user = self.get_by_id(user_id)
+        if not user:
+            return None
+            
+        for key, value in user_data.items():
+            setattr(user, key, value)
+            
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+    
+    def delete_user(self, user_id: str) -> bool:
+        """Delete a user"""
+        user = self.get_by_id(user_id)
+        if not user:
+            return False
+            
+        self.db.delete(user)
+        self.db.commit()
+        return True
+
+class AccountRepository(BaseRepository):
+    """
+    Repository for Account entity operations
+    """
+    def __init__(self, db: Session):
+        super().__init__(db, Account)
+    
+    def get_by_domain(self, domain: str) -> Optional[Account]:
+        """Get an account by domain"""
+        return self.db.query(Account).filter(Account.domain == domain).first()
+    
+    def get_by_id(self, id: str) -> Optional[Account]:
+        """Get an account by ID"""
+        return self.db.query(Account).filter(Account.id == id).first()
+    
+    def create_account(self, account_data: Dict[str, Any]) -> Account:
+        """Create a new account"""
+        account = Account(**account_data)
+        self.db.add(account)
+        self.db.commit()
+        self.db.refresh(account)
+        return account
+    
+    def update_account(self, account_id: str, account_data: Dict[str, Any]) -> Optional[Account]:
+        """Update an existing account"""
+        account = self.get_by_id(account_id)
+        if not account:
+            return None
+            
+        for key, value in account_data.items():
+            setattr(account, key, value)
+            
+        self.db.commit()
+        self.db.refresh(account)
+        return account
+    
+    def delete_account(self, account_id: str) -> bool:
+        """Delete an account"""
+        account = self.get_by_id(account_id)
+        if not account:
+            return False
+            
+        self.db.delete(account)
+        self.db.commit()
+        return True
+
+class PatientProfileRepository(BaseRepository):
+    """
+    Repository for PatientProfile entity operations
+    """
+    def __init__(self, db: Session):
+        super().__init__(db, PatientProfile)
+    
+    def get_by_user_id(self, user_id: str) -> Optional[PatientProfile]:
+        """Get a patient profile by user ID"""
+        return self.db.query(PatientProfile).filter(PatientProfile.user_id == user_id).first()
+    
+    def create_profile(self, profile_data: Dict[str, Any]) -> PatientProfile:
+        """Create a new patient profile"""
+        profile = PatientProfile(**profile_data)
+        self.db.add(profile)
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile
+    
+    def update_profile(self, profile_id: str, profile_data: Dict[str, Any]) -> Optional[PatientProfile]:
+        """Update an existing patient profile"""
+        profile = self.get_by_id(profile_id)
+        if not profile:
+            return None
+            
+        for key, value in profile_data.items():
+            setattr(profile, key, value)
+            
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile

@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 import uuid
 from datetime import datetime, timedelta
-from app.models.user import User  # Import the User model
+from app.models.user import User
 
 
 class PatientInvite(Base):
@@ -12,6 +12,7 @@ class PatientInvite(Base):
     __tablename__ = "patient_invites"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
     email = Column(String, nullable=False, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
@@ -20,11 +21,12 @@ class PatientInvite(Base):
     clinician_id = Column(String, ForeignKey("users.id"), nullable=False)
     status = Column(String, nullable=False, default="pending")  # pending, accepted, expired, revoked
     custom_message = Column(Text, nullable=True)
-    meta_data = Column(JSON, nullable=True)
+    session_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
     accepted_at = Column(DateTime, nullable=True)
 
     # Relationships
-    clinician = relationship("User", backref="patient_invites")
+    user = relationship("User", foreign_keys=[user_id])
+    clinician = relationship("User", foreign_keys=[clinician_id], backref="patient_invites")

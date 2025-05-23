@@ -1,29 +1,37 @@
 version: '3.8'
 
 services:
-  api:
+  backend:
     build: .
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     environment:
-      - DATABASE_URI=mysql+pymysql://user:password@db/cancergenix
+      - DATABASE_URL=mysql://genascope:genascope@db:3306/genascope
     depends_on:
       - db
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: ["./db-migration.sh"]
+    networks:
+      - genascope-network
 
   db:
     image: mysql:8.0
     ports:
       - "3307:3306"
     environment:
-      - MYSQL_DATABASE=cancergenix
-      - MYSQL_USER=user
-      - MYSQL_PASSWORD=password
-      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=genascope
+      - MYSQL_USER=genascope
+      - MYSQL_PASSWORD=genascope
+      - MYSQL_ROOT_PASSWORD=root
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - genascope-network
 
 volumes:
   mysql_data:
+
+networks:
+  genascope-network:
+    driver: bridge

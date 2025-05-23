@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import api_router
 
 app = FastAPI(
-    title="CancerGenix API",
-    description="Backend API for CancerGenix chat application",
+    title="Genascope API",
+    description="Backend API for Genascope chat application",
     version="0.1.0",
 )
 

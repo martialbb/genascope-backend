@@ -1,7 +1,3 @@
-from unittest.mock import MagicMock
-from datetime import datetime, date, time
-import uuid
-
 def create_mock_appointment(
     id=None, 
     clinician_id="clinician-123", 
@@ -40,6 +36,7 @@ def create_mock_appointment(
     Returns:
         MagicMock: Configured to mimic an Appointment model
     """
+    from datetime import datetime, date, time
     
     mock_appointment = MagicMock()
     mock_appointment.id = id or str(uuid.uuid4())
