@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 import enum
+from app.models.accounts import Account  # Import Account from accounts.py instead of defining it here
 
 class UserRole(str, enum.Enum):
     PATIENT = "patient"
@@ -11,20 +12,6 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
     LAB_TECH = "lab_tech"
-
-class Account(Base):
-    """Organization or healthcare facility account"""
-    __tablename__ = "accounts"
-    
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    domain = Column(String, nullable=False, unique=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    users = relationship("User", back_populates="account", cascade="all, delete-orphan")
 
 class User(Base):
     """Application user model"""

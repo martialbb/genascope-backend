@@ -42,8 +42,8 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     """Schema for JWT token payload data"""
-    username: str
-    user_id: str
+    email: str
+    user_id: Optional[str] = None
     role: Optional[str] = None
 
 

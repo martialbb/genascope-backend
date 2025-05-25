@@ -43,7 +43,7 @@ cancer-genix-backend/
 │   │   │   ├── test_appointments.py           # Unit tests for appointments
 │   │   │   ├── test_appointments_integration.py # Integration tests
 │   │   │   └── test_appointments_e2e.py       # End-to-end tests
-│   │   ├── mock_models.py   # Mock models for testing
+│   │   ├���─ mock_models.py   # Mock models for testing
 │   │   └── test_utils.py    # Test utilities
 │   └── utils/               # Utility functions
 ├── .env                     # Environment variables
@@ -159,6 +159,16 @@ def create_appointment(self, appointment_data: AppointmentCreate) -> Appointment
     # Convert database model back to response DTO
     return AppointmentResponse.from_orm(created_appointment)
 ```
+
+## Repository Pattern for User Management
+
+All user-related operations (creation, authentication, updates, queries) are handled through the repository layer, specifically the `UserRepository` and related repositories. The service layer (e.g., `UserService`) does not make direct database calls; instead, it delegates all data access to the repository classes. This ensures a clean separation of concerns, improves testability, and centralizes data access logic.
+
+**Example:**
+- `UserService` uses `UserRepository` for user CRUD and authentication.
+- No direct SQLAlchemy queries are made in the service layer for users.
+
+This pattern is followed for accounts and patient profiles as well, using `AccountRepository` and `PatientProfileRepository`.
 
 ## API Endpoints
 
@@ -285,9 +295,12 @@ Creates a new organizational account (requires super_admin role).
 }
 ```
 
-#### POST `/api/account/create_user`
+### User Management
 
-Creates a new user within an account (requires admin role).
+All user management endpoints (such as user creation, authentication, and updates) utilize the repository layer for database access. The API controllers call the service layer, which in turn uses the `UserRepository` for all user data operations. This ensures consistency and maintainability across the codebase.
+
+#### POST `/api/account/create_user`
+Creates a new user within an account (requires admin role). The user is created using the repository pattern via the service layer.
 
 **Request Body:**
 ```json
@@ -311,6 +324,8 @@ Creates a new user within an account (requires admin role).
   "created_at": "2025-05-12T12:00:00Z"
 }
 ```
+
+> **Note:** All user CRUD and authentication operations are routed through the `UserRepository` and not direct database calls.
 
 ### Patient Management
 

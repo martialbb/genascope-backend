@@ -49,20 +49,47 @@ class UserRepository(BaseRepository):
             
         for key, value in user_data.items():
             setattr(user, key, value)
-            
+
         self.db.commit()
         self.db.refresh(user)
         return user
-    
+
     def delete_user(self, user_id: str) -> bool:
         """Delete a user"""
         user = self.get_by_id(user_id)
         if not user:
             return False
-            
         self.db.delete(user)
         self.db.commit()
         return True
+
+    def get_users(
+        self,
+        role: Optional[str] = None,
+        account_id: Optional[str] = None,
+        search: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[User]:
+        """Get a list of users with optional filters and pagination."""
+        query = self.db.query(User)
+
+        if role:
+            query = query.filter(User.role == role)
+
+        if account_id:
+            query = query.filter(User.account_id == account_id)
+
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    User.name.ilike(search_term),
+                    User.email.ilike(search_term)
+                )
+            )
+
+        return query.offset(skip).limit(limit).all()
 
 class AccountRepository(BaseRepository):
     """

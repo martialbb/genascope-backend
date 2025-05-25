@@ -29,7 +29,10 @@ class User:
         self.full_name = full_name
         self.disabled = disabled
         self.id = user_id
-        self.role = role
+        self.role = role  # Make sure role is properly initialized
+
+    def __str__(self):
+        return f"User(id={self.id}, username={self.username}, role={self.role})"
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token"""
@@ -39,6 +42,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# Enhanced get_current_user function with debugging
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Get the current authenticated user from token"""
     credentials_exception = HTTPException(
@@ -47,32 +51,41 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    print(f"Auth Debug: Received token: {token[:10]}...")
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
+        email: str = payload.get("sub")  # Use 'sub' for email
         user_id: str = payload.get("id")
         
-        if username is None or user_id is None:
+        if email is None or user_id is None:
+            print("Auth Debug: No subject (sub) in token")
             raise credentials_exception
             
-        token_data = TokenData(username=username, user_id=user_id)
-    except JWTError:
+        token_data = TokenData(email=email, user_id=user_id)
+        print(f"Auth Debug: Token decoded successfully for user: {email}")
+
+        # Get user from database
+        user_service = UserService(db)
+        db_user = user_service.get_user_by_email(token_data.email)
+
+        if db_user is None:
+            print(f"Auth Debug: User not found in database for email: {token_data.email}")
+            raise credentials_exception
+
+        print(f"Auth Debug: User found: id={db_user.id}, role={db_user.role}")
+        return User(
+            username=db_user.email,
+            email=db_user.email,
+            full_name=db_user.name,
+            disabled=not db_user.is_active,
+            user_id=db_user.id,
+            role=db_user.role.value
+        )
+
+    except JWTError as e:
+        print(f"Auth Debug: JWT Error: {str(e)}")
         raise credentials_exception
-    
-    user_service = UserService(db)
-    db_user = user_service.get_user_by_email(token_data.username)
-    
-    if db_user is None:
-        raise credentials_exception
-        
-    return User(
-        username=db_user.email,
-        email=db_user.email,
-        full_name=db_user.name,
-        disabled=not db_user.is_active,
-        user_id=db_user.id,
-        role=db_user.role.value
-    )
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     """Get the current active user"""
@@ -139,110 +152,3 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         "is_active": not current_user.disabled
     }
 
-# Utilities
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
-
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db[username]
-        return UserInDB(**user_dict)
-
-def authenticate_user(fake_db, username: str, password: str):
-    user = get_user(fake_db, username)
-    if not user:
-        return False
-    # In a real app, verify the password hash here
-    if password != "password":  # Simplified for demo
-        return False
-    return user
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        user_id: str = payload.get("user_id")
-        role: str = payload.get("role")
-        
-        if email is None:
-            raise credentials_exception
-            
-        token_data = TokenData(
-            email=email,
-            user_id=user_id,
-            role=role,
-            exp=payload.get("exp")
-        )
-    except JWTError:
-        raise credentials_exception
-        
-    user = get_user(USERS_DB, username=email)  # Use email as username
-    if user is None:
-        raise credentials_exception
-        
-    # Add the role and user_id to the user object if they're not already set
-    if not hasattr(user, 'user_id') or not user.user_id:
-        user.user_id = token_data.user_id
-    
-    if not hasattr(user, 'role') or not user.role:
-        user.role = token_data.role
-        
-    return user
-
-async def get_current_active_user(current_user: User = Depends(get_current_user)):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-# Endpoints
-@router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(USERS_DB, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": user.username,
-            "user_id": user.user_id,
-            "role": user.role.value if user.role else UserRole.PATIENT.value
-        }, 
-        expires_delta=access_token_expires
-    )
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "user_id": user.user_id,
-        "role": user.role.value if user.role else UserRole.PATIENT.value
-    }
-
-@router.get("/users/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_active_user)):
-    # Convert User class instance to dict to match UserResponse schema
-    return {
-        "id": current_user.user_id,
-        "email": current_user.email,
-        "first_name": current_user.full_name.split()[0] if current_user.full_name else "",
-        "last_name": current_user.full_name.split()[1] if current_user.full_name and len(current_user.full_name.split()) > 1 else "",
-        "role": current_user.role,
-        "is_active": not current_user.disabled,
-        "phone": None  # Placeholder as we don't have this in our User class
-    }

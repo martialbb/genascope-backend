@@ -145,6 +145,23 @@ class UserService(BaseService):
         """Get all patients for a clinician"""
         return self.user_repository.get_patients_by_clinician(clinician_id)
     
+    def get_users(
+        self,
+        role: Optional[str] = None,
+        account_id: Optional[str] = None,
+        search: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[User]:
+        """Get a list of users with optional filters and pagination."""
+        return self.user_repository.get_users(
+            role=role,
+            account_id=account_id,
+            search=search,
+            skip=skip,
+            limit=limit
+        )
+
     def assign_patient_to_clinician(self, patient_id: str, clinician_id: str) -> Optional[User]:
         """Assign a patient to a clinician"""
         # Verify patient and clinician exist

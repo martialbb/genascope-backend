@@ -1,413 +1,331 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+"""
+User Management API
+
+All user CRUD, authentication, and update operations are performed via the repository layer (`UserRepository`) through the service layer (`UserService`).
+This ensures a clean separation of concerns, maintainability, and testability. No direct database calls are made in the API or service layer for user operations.
+"""
+
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
 from typing import List, Optional
 from sqlalchemy.orm import Session
+
 from app.db.database import get_db
 from app.api.auth import get_current_active_user, User
+from app.schemas.users import UserCreate, UserResponse, UserUpdate
 from app.services.users import UserService
-from app.models.user import UserRole
-from app.schemas.users import (
-    UserResponse, UserCreate, UserUpdate, PatientResponse, 
-    PatientCreate, PatientProfileResponse, PatientProfileUpdate,
-    PatientProfileCreate, AccountResponse, AccountCreate, AccountUpdate
-)
-from app.schemas.common import SuccessResponse
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# User management endpoints
+# Verify admin or super admin privileges for user management
+async def verify_user_management_permissions(current_user: User = Depends(get_current_active_user)):
+    """Dependency to verify user has permissions to manage users"""
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can manage users"
+        )
+    return current_user
 
-@router.get("", response_model=List[UserResponse])
+@router.get("/", response_model=List[UserResponse], summary="List Users")
 async def get_users(
-    role: Optional[str] = None,
-    account_id: Optional[str] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
-    current_user: User = Depends(get_current_active_user),
+    role: Optional[str] = Query(None, description="Filter users by role (e.g., admin, clinician, patient)"),
+    account_id: Optional[str] = Query(None, description="Filter users by account ID"),
+    search: Optional[str] = Query(None, description="Search users by name or email"),
+    skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum number of records to return"),
+    current_user: User = Depends(verify_user_management_permissions),
     db: Session = Depends(get_db)
 ):
     """
-    Get list of users with optional filtering
-    """
-    # Check permissions - Admin or super_admin role required
-    if current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view user list"
-        )
-    
-    user_service = UserService(db)
-    # TODO: Implement filtering, pagination and total count in user service
-    # For now, return mock response
-    users = user_service.get_users(role=role, account_id=account_id, skip=skip, limit=limit)
-    return users
+    Retrieve a list of users with filtering, searching and pagination options.
 
-@router.post("", response_model=UserResponse)
-async def create_user(
-    user_data: UserCreate,
+    - **Permissions**: Requires admin or super_admin role
+    - **Filtering**: Filter by role, account_id
+    - **Search**: Search by name or email (case-insensitive)
+    - **Pagination**: Use skip and limit parameters
+
+    Regular admins can only see users in their own account.
+    Super admins can see all users across accounts.
+
+    Returns a list of users matching the specified criteria.
+    """
+    user_service = UserService(db)
+
+    # Regular admins can only see users in their own account
+    if current_user.role == "admin" and (not account_id or account_id != current_user.account_id):
+        account_id = current_user.account_id
+
+    return user_service.get_users(
+        role=role,
+        account_id=account_id,
+        search=search,
+        skip=skip,
+        limit=limit
+    )
+
+@router.get("/{user_id}", response_model=UserResponse, summary="Get User")
+async def get_user(
+    user_id: str = Path(..., description="The ID of the user to retrieve"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Create a new user
+    Retrieve a specific user by ID.
+
+    - **Permissions**:
+      - Users can view their own profile
+      - Admins can view users in their account
+      - Super admins can view any user
+    - **Path Parameter**: user_id - The unique identifier of the user
+
+    Returns the specified user's details if the current user has permissions to view them.
     """
-    # Check permissions - Admin or super_admin role required
-    if current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
+    user_service = UserService(db)
+    user = user_service.get_user_by_id(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Check permissions: users can see their own profile, admins can see users in their account
+    if (current_user.id != user_id and
+        current_user.role != "super_admin" and
+        (current_user.role != "admin" or current_user.account_id != user.account_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create users"
+            detail="Not enough permissions"
         )
-    
-    # Only super_admin can create admin users
-    if user_data.role == UserRole.ADMIN and current_user.role != UserRole.SUPER_ADMIN.value:
+
+    return user
+
+@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create User")
+async def create_user(
+    user_data: UserCreate = Body(...,
+        examples={
+            "regular_user": {
+                "summary": "Create a regular user",
+                "value": {
+                    "email": "user@example.com",
+                    "name": "New User",
+                    "role": "clinician",
+                    "account_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "is_active": True,
+                    "password": "StrongPassword123!",
+                    "confirm_password": "StrongPassword123!"
+                }
+            },
+            "admin_user": {
+                "summary": "Create an admin user (super_admin only)",
+                "value": {
+                    "email": "admin@example.com",
+                    "name": "Admin User",
+                    "role": "admin",
+                    "account_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "is_active": True,
+                    "password": "AdminStrongPassword123!",
+                    "confirm_password": "AdminStrongPassword123!"
+                }
+            }
+        }
+    ),
+    current_user: User = Depends(verify_user_management_permissions),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new user.
+
+    - **Permissions**:
+      - Admins can create regular users in their own account
+      - Super admins can create any user in any account
+    - **Request Body**: User details including password
+    - **Account Restrictions**: Regular admins can only create users in their own account
+    - **Role Restrictions**: Only super admins can create users with admin or super_admin roles
+
+    Returns the created user details (without password).
+    """
+    # Regular admins can only create users in their own account
+    if current_user.role == "admin":
+        if not user_data.account_id:
+            user_data.account_id = current_user.account_id
+        elif user_data.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only create users in your own account"
+            )
+
+    # Only super_admin can create users with admin or super_admin roles
+    if user_data.role in ["admin", "super_admin"] and current_user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create admin users"
+            detail="Only super_admin can create admin or super_admin users"
         )
-    
-    # Super_admin users can only be created by other super_admins
-    if user_data.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create super admin users"
-        )
-    
+
     user_service = UserService(db)
     try:
-        user = user_service.create_user(user_data.model_dump())
+        user = user_service.create_user(user_data)
         return user
-    except HTTPException as e:
-        raise e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create user: {str(e)}"
         )
 
-@router.get("/{user_id}", response_model=UserResponse)
-async def get_user(
-    user_id: str,
+@router.put("/{user_id}", response_model=UserResponse, summary="Update User")
+async def update_user(
+    user_id: str = Path(..., description="The ID of the user to update"),
+    user_data: UserUpdate = Body(...,
+        examples={
+            "basic_update": {
+                "summary": "Update basic user information",
+                "value": {
+                    "name": "Updated Name",
+                    "email": "updated@example.com"
+                }
+            },
+            "status_update": {
+                "summary": "Activate or deactivate a user",
+                "value": {
+                    "is_active": False
+                }
+            },
+            "admin_update": {
+                "summary": "Update role (admin only)",
+                "value": {
+                    "role": "clinician",
+                    "is_active": True
+                }
+            }
+        }
+    ),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get user details by ID
+    Update a user's information.
+
+    - **Permissions**:
+      - Users can update their own basic information (name, email)
+      - Admins can update users in their account
+      - Super admins can update any user
+    - **Path Parameter**: user_id - The unique identifier of the user to update
+    - **Request Body**: User details to update
+    - **Role Restrictions**: Only super admins can assign admin or super_admin roles
+
+    Returns the updated user information.
     """
-    # Users can view their own profile, admins can view any profile
-    if user_id != current_user.id and current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
-        # Clinicians can view their patients
-        user_service = UserService(db)
-        patient = user_service.get_user_by_id(user_id)
-        
-        if not patient or patient.clinician_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to view this user"
-            )
-    
     user_service = UserService(db)
     user = user_service.get_user_by_id(user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
-    return user
 
-@router.put("/{user_id}", response_model=UserResponse)
-async def update_user(
-    user_id: str,
-    user_data: UserUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Update user details
-    """
-    # Users can update their own profile, admins can update any profile
-    if user_id != current_user.id and current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this user"
-        )
-    
-    # Only super_admin can change roles
-    if user_data.role is not None and current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to change user roles"
-        )
-    
-    user_service = UserService(db)
-    user = user_service.update_user(user_id, user_data.model_dump(exclude_unset=True))
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return user
+    # Check permissions
+    is_admin_or_super = current_user.role in ["admin", "super_admin"]
+    is_self_update = current_user.id == user_id
+    is_same_account = getattr(current_user, "account_id", None) == getattr(user, "account_id", None)
 
-@router.delete("/{user_id}", response_model=SuccessResponse)
-async def delete_user(
-    user_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Delete a user
-    """
-    # Only admins can delete users, and users cannot delete themselves
-    if current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
+    if not is_self_update and (not is_admin_or_super or (current_user.role == "admin" and not is_same_account)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete users"
+            detail="Not enough permissions"
         )
-    
-    if user_id == current_user.id:
+
+    # For self-updates, only allow updating certain fields
+    if is_self_update and not is_admin_or_super:
+        allowed_fields = {"name", "email"}
+        for field in user_data.model_dump(exclude_unset=True):
+            if field not in allowed_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You don't have permission to update the {field} field"
+                )
+
+    # Only super_admin can change roles to admin or super_admin
+    if user_data.role in ["admin", "super_admin"] and current_user.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super_admin can assign admin or super_admin roles"
+        )
+
+    try:
+        updated_user = user_service.update_user(user_id, user_data)
+        return updated_user
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete your own account"
+            detail=str(e)
         )
-    
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update user: {str(e)}"
+        )
+
+@router.delete("/{user_id}", status_code=status.HTTP_200_OK, summary="Delete User")
+async def delete_user(
+    user_id: str = Path(..., description="The ID of the user to delete"),
+    current_user: User = Depends(verify_user_management_permissions),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a user.
+
+    - **Permissions**:
+      - Admins can delete users in their account
+      - Super admins can delete any user
+    - **Path Parameter**: user_id - The unique identifier of the user to delete
+    - **Restrictions**:
+      - Users cannot delete themselves
+      - Regular admins can only delete users in their account
+
+    This is a destructive operation that permanently removes the user.
+    This operation cannot be undone.
+
+    Returns a success message when the user is successfully deleted.
+    """
     user_service = UserService(db)
-    
-    # Check if target user is an admin - only super_admin can delete admins
-    target_user = user_service.get_user_by_id(user_id)
-    if not target_user:
+    user = user_service.get_user_by_id(user_id)
+
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
-    if target_user.role == UserRole.ADMIN and current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete admin users"
-        )
-    
-    if target_user.role == UserRole.SUPER_ADMIN and current_user.id != target_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Super admin users can only delete themselves"
-        )
-    
-    success = user_service.delete_user(user_id)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user"
-        )
-    
-    return SuccessResponse(
-        message="User deleted successfully",
-        data={"id": user_id}
-    )
 
-# Patient-specific endpoints
-
-@router.post("/patients", response_model=PatientResponse)
-async def create_patient(
-    patient_data: PatientCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Create a new patient with profile
-    """
-    # Clinicians and admins can create patients
-    if current_user.role not in [UserRole.CLINICIAN.value, UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
+    # Regular admins can only delete users in their account
+    if current_user.role == "admin" and getattr(current_user, "account_id", None) != getattr(user, "account_id", None):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create patients"
+            detail="You can only delete users in your own account"
         )
-    
-    # If clinician, automatically assign patient to themselves
-    if current_user.role == UserRole.CLINICIAN.value:
-        patient_data.clinician_id = current_user.id
-    
-    user_service = UserService(db)
-    profile_data = None
-    if patient_data.profile:
-        profile_data = patient_data.profile.model_dump()
-    
+
+    # Prevent users from deleting themselves
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account"
+        )
+
     try:
-        patient_response = user_service.create_patient(
-            patient_data.model_dump(exclude={"profile"}), 
-            profile_data
-        )
-        return patient_response
-    except HTTPException as e:
-        raise e
+        success = user_service.delete_user(user_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete user"
+            )
+        return {"message": "User successfully deleted", "status_code": 200}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create patient: {str(e)}"
+            detail=f"Failed to delete user: {str(e)}"
         )
-
-@router.get("/patients/{patient_id}/profile", response_model=PatientProfileResponse)
-async def get_patient_profile(
-    patient_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get a patient's profile
-    """
-    user_service = UserService(db)
-    
-    # Check authorization - admins and the patient's clinician
-    patient = user_service.get_user_by_id(patient_id)
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found"
-        )
-    
-    if (current_user.id != patient_id and  # Not the patient themselves
-        current_user.id != patient.clinician_id and  # Not the patient's clinician
-        current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]):  # Not an admin
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this patient's profile"
-        )
-    
-    profile = user_service.get_patient_profile(patient_id)
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found"
-        )
-    
-    return profile
-
-@router.put("/patients/{patient_id}/profile", response_model=PatientProfileResponse)
-async def update_patient_profile(
-    patient_id: str,
-    profile_data: PatientProfileUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Update a patient's profile
-    """
-    user_service = UserService(db)
-    
-    # Check authorization - admins and the patient's clinician
-    patient = user_service.get_user_by_id(patient_id)
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found"
-        )
-    
-    if (current_user.id != patient_id and  # Not the patient themselves
-        current_user.id != patient.clinician_id and  # Not the patient's clinician
-        current_user.role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]):  # Not an admin
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this patient's profile"
-        )
-    
-    # Get existing profile
-    profile = user_service.get_patient_profile(patient_id)
-    if not profile:
-        # Create profile if it doesn't exist
-        profile_data_dict = profile_data.model_dump(exclude_unset=True)
-        profile_data_dict["id"] = str(uuid.uuid4())
-        profile_data_dict["user_id"] = patient_id
-        profile = user_service.profile_repository.create_profile(profile_data_dict)
-    else:
-        # Update existing profile
-        profile = user_service.update_patient_profile(
-            profile.id, 
-            profile_data.model_dump(exclude_unset=True)
-        )
-    
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update patient profile"
-        )
-    
-    return profile
-
-# Account management endpoints
-
-@router.post("/accounts", response_model=AccountResponse)
-async def create_account(
-    account_data: AccountCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Create a new account
-    """
-    # Only super_admin can create accounts
-    if current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create accounts"
-        )
-    
-    user_service = UserService(db)
-    try:
-        account = user_service.create_account(account_data.model_dump())
-        return account
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create account: {str(e)}"
-        )
-
-@router.get("/accounts", response_model=List[AccountResponse])
-async def get_accounts(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get list of accounts
-    """
-    # Only super_admin can list accounts
-    if current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view account list"
-        )
-    
-    # TODO: Implement account listing in user service
-    # For now, return empty list
-    return []
-
-@router.put("/accounts/{account_id}", response_model=AccountResponse)
-async def update_account(
-    account_id: str,
-    account_data: AccountUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Update an account
-    """
-    # Only super_admin can update accounts
-    if current_user.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update accounts"
-        )
-    
-    user_service = UserService(db)
-    account = user_service.update_account(account_id, account_data.model_dump(exclude_unset=True))
-    
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
-        )
-    
-    return account

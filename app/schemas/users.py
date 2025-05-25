@@ -40,7 +40,6 @@ class UserUpdate(BaseModel):
     """Schema for updating existing users"""
     email: Optional[EmailStr] = None
     name: Optional[str] = None
-    password: Optional[str] = None
     role: Optional[UserRole] = None
     account_id: Optional[str] = None
     is_active: Optional[bool] = None
