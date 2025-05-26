@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Type
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from app.models.user import User, Account, PatientProfile, UserRole
@@ -45,14 +45,41 @@ class UserRepository(BaseRepository):
         """Update an existing user"""
         user = self.get_by_id(user_id)
         if not user:
+            print(f"DEBUG Repo: User with id {user_id} not found")
             return None
             
-        for key, value in user_data.items():
-            setattr(user, key, value)
+        # Debug info before update
+        print(f"DEBUG Repo: Before update, user {user_id} has role: {user.role}, name: {user.name}")
+        print(f"DEBUG Repo: Update data received: {user_data}")
+        
+        # Create a copy of the data to avoid modifying the original
+        update_data = dict(user_data)
+        
+        # Ensure role is properly handled
+        if "role" in update_data and update_data["role"] is not None:
+            from app.models.user import UserRole
+            try:
+                if isinstance(update_data["role"], str):
+                    update_data["role"] = UserRole(update_data["role"])
+                    print(f"DEBUG Repo: Converted role string to enum value {update_data['role']}")
+            except ValueError as e:
+                print(f"DEBUG Repo: Error converting role: {e}")
+            
+        # Use our safe attribute setter with the potentially modified data
+        self._safe_set_attributes(user, update_data)
+        
+        # Debug info after update
+        print(f"DEBUG Repo: After update, user {user_id} has role: {user.role}, name: {user.name}")
 
-        self.db.commit()
-        self.db.refresh(user)
-        return user
+        try:
+            self.db.commit()
+            self.db.refresh(user)
+            print(f"DEBUG Repo: Successfully committed changes to user {user_id}")
+            return user
+        except Exception as e:
+            self.db.rollback()
+            print(f"ERROR Repo: Failed to update user {user_id}: {str(e)}")
+            raise
 
     def delete_user(self, user_id: str) -> bool:
         """Delete a user"""
@@ -91,6 +118,8 @@ class UserRepository(BaseRepository):
 
         return query.offset(skip).limit(limit).all()
 
+    # _safe_set_attributes moved to BaseRepository
+
 class AccountRepository(BaseRepository):
     """
     Repository for Account entity operations
@@ -120,8 +149,8 @@ class AccountRepository(BaseRepository):
         if not account:
             return None
             
-        for key, value in account_data.items():
-            setattr(account, key, value)
+        # Use our safe attribute setter
+        self._safe_set_attributes(account, account_data)
             
         self.db.commit()
         self.db.refresh(account)
@@ -162,8 +191,8 @@ class PatientProfileRepository(BaseRepository):
         if not profile:
             return None
             
-        for key, value in profile_data.items():
-            setattr(profile, key, value)
+        # Use our safe attribute setter
+        self._safe_set_attributes(profile, profile_data)
             
         self.db.commit()
         self.db.refresh(profile)

@@ -251,21 +251,50 @@ async def update_user(
                 )
 
     # Only super_admin can change roles to admin or super_admin
-    if user_data.role in ["admin", "super_admin"] and current_user.role != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super_admin can assign admin or super_admin roles"
-        )
+    print(f"DEBUG: user_data type: {type(user_data)}")
+    print(f"DEBUG: user_data fields: {dir(user_data)}")
+    print(f"DEBUG: user_data dict: {user_data.model_dump(exclude_unset=True)}")
+    
+    # Check if role is included in the update data
+    user_data_dict = user_data.model_dump(exclude_unset=True)
+    if 'role' in user_data_dict and user_data_dict['role'] is not None:
+        role_value = user_data_dict['role']
+        print(f"DEBUG: role value from dict: {role_value}")
+        
+        # Only super_admin can assign admin or super_admin roles
+        if role_value in ["admin", "super_admin"] and current_user.role != "super_admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only super_admin can assign admin or super_admin roles"
+            )
 
     try:
+        # First, get the current user state for detailed logging
+        current_user_state = user_service.get_user_by_id(user_id)
+        print(f"DEBUG API: Current user state before update: role={current_user_state.role}, name={current_user_state.name}")
+        
+        # Attempt the update
         updated_user = user_service.update_user(user_id, user_data)
-        return updated_user
+        
+        # Log the result
+        print(f"DEBUG API: Updated user result: role={updated_user.role}, name={updated_user.name}")
+        
+        # Verify update was successful by reloading the user
+        reloaded_user = user_service.get_user_by_id(user_id)
+        print(f"DEBUG API: Reloaded user state: role={reloaded_user.role}, name={reloaded_user.name}")
+        
+        # Return the reloaded user to ensure we're sending the most accurate state
+        return reloaded_user
     except ValueError as e:
+        print(f"DEBUG API: Value error during update: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        import traceback
+        print(f"DEBUG API: Exception during update: {e}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update user: {str(e)}"

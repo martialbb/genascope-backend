@@ -33,7 +33,7 @@ All commands are run from the root of the project, from a terminal:
 | Command                 | Action                                           |
 | :---------------------- | :----------------------------------------------- |
 | `uvicorn app.main:app --reload` | Start development server at `localhost:8000` |
-| `./run_tests.sh`        | Run comprehensive test suite                      |
+| `pytest tests/`          | Run comprehensive test suite                      |
 | `pytest`                | Run tests                                        |
 | `alembic upgrade head`  | Run database migrations                          |
 | `alembic revision --autogenerate -m "message"` | Generate database migration |
@@ -77,7 +77,7 @@ Make sure to configure CORS in `app/main.py` to allow requests from your fronten
 Run the comprehensive test suite:
 
 ```sh
-./run_tests.sh
+pytest tests/
 ```
 
 This will run:

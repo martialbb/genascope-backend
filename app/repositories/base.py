@@ -85,3 +85,92 @@ class BaseRepository(Generic[T, CreateSchemaType, UpdateSchemaType]):
         self.db.delete(db_obj)
         self.db.commit()
         return True
+        
+    def _safe_set_attributes(self, entity: Any, data: Dict[str, Any]) -> None:
+        """
+        Safely set attributes on an entity from a dictionary.
+        
+        Args:
+            entity: The entity to update (e.g., User, Account, PatientProfile)
+            data: Dictionary containing the attributes to update
+            
+        Returns:
+            None
+        """
+        # Print entity's initial state for key fields
+        print(f"Debug: Initial entity state - ID: {getattr(entity, 'id', 'unknown')}")
+        if hasattr(entity, 'name'):
+            print(f"Debug: Initial name: {entity.name}")
+        if hasattr(entity, 'role'):
+            print(f"Debug: Initial role: {entity.role} (type: {type(entity.role)})")
+        
+        # Get all entity columns and their types for validation
+        column_types = {}
+        try:
+            from sqlalchemy import inspect
+            if hasattr(inspect(entity), 'mapper'):
+                mapper = inspect(entity).mapper
+                if hasattr(mapper, 'columns'):
+                    for column_name, column in mapper.columns.items():
+                        if hasattr(column, 'type'):
+                            column_types[column_name] = column.type
+                            print(f"Debug: Column {column_name} has type {column.type}")
+        except Exception as e:
+            print(f"Debug: Error inspecting entity columns: {e}")
+        
+        for key, value in data.items():
+            if hasattr(entity, key):
+                # Skip None values to prevent overwriting with None
+                if value is None:
+                    print(f"Debug: Skipping None value for attribute '{key}'")
+                    continue
+                    
+                # Store original value for logging
+                original_value = getattr(entity, key)
+                
+                # Special handling for enum attributes (like role)
+                if key in column_types and hasattr(column_types[key], 'enum_class'):
+                    enum_class = column_types[key].enum_class
+                    print(f"Debug: Handling enum attribute '{key}' with enum class {enum_class}")
+                    
+                    try:
+                        if isinstance(value, str) and not isinstance(value, enum_class):
+                            # Convert string to enum value
+                            enum_value = enum_class(value)
+                            print(f"Debug: Converted string '{value}' to enum value {enum_value}")
+                            setattr(entity, key, enum_value)
+                        elif isinstance(value, enum_class):
+                            # Already the right type
+                            print(f"Debug: Value '{value}' is already correct enum type")
+                            setattr(entity, key, value)
+                        else:
+                            # Try to convert other types
+                            print(f"Debug: Attempting to convert {type(value)} to enum")
+                            enum_value = enum_class(str(value))
+                            setattr(entity, key, enum_value)
+                    except Exception as e:
+                        print(f"Debug: Error handling enum conversion for '{key}': {e}")
+                        print(f"Debug: Falling back to direct assignment for '{key}'")
+                        # Fall back to direct assignment
+                        setattr(entity, key, value)
+                else:
+                    # Default attribute setting for non-enum types
+                    setattr(entity, key, value)
+                    
+                print(f"Debug: Changed attribute '{key}' from '{original_value}' to '{getattr(entity, key)}' on {entity.__class__.__name__}")
+            else:
+                # Log or handle unknown attributes appropriately
+                # This prevents silent failures when attribute names are mismatched
+                print(f"Warning: Attribute '{key}' does not exist on {entity.__class__.__name__}")
+        
+        # Print final state for validation
+        if hasattr(entity, 'name'):
+            print(f"Debug: Final name: {entity.name}")
+        if hasattr(entity, 'role'):
+            print(f"Debug: Final role: {entity.role} (type: {type(entity.role)})")
+        
+        # Print entity's final state for key fields to confirm the update
+        if hasattr(entity, 'name'):
+            print(f"Debug: Final name: {entity.name}")
+        if hasattr(entity, 'role'):
+            print(f"Debug: Final role: {entity.role} (type: {type(entity.role)})")

@@ -34,6 +34,14 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating new users"""
     password: str = Field(..., description="User's password", min_length=8)
+    confirm_password: str = Field(..., description="Confirmation of password")
+    
+    @field_validator('confirm_password')
+    def passwords_match(cls, v, info):
+        values = info.data
+        if 'password' in values and v != values['password']:
+            raise ValueError('passwords do not match')
+        return v
     
 
 class UserUpdate(BaseModel):
@@ -46,6 +54,18 @@ class UserUpdate(BaseModel):
     clinician_id: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('role')
+    def validate_role(cls, v):
+        """Ensures role is properly handled regardless of input format"""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            try:
+                return UserRole(v)
+            except ValueError:
+                raise ValueError(f"Invalid role: {v}")
+        return v
 
 
 class UserInDB(UserBase):
@@ -109,8 +129,8 @@ class PatientCreate(UserCreate):
     profile: Optional[PatientProfileCreate] = None
 
 
-class PatientResponse(BaseModel):
-    """Schema for patient data with profile in responses"""
+class PatientWithUserResponse(BaseModel):
+    """Schema for patient data with separate user object in responses"""
     user: UserResponse
     profile: Optional[PatientProfileResponse] = None
     
@@ -161,34 +181,8 @@ class AccountWithUsers(AccountResponse):
     users: List[UserResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
-    """Base model for user data shared across requests and responses"""
-    email: EmailStr
-    first_name: str
-    last_name: str
-    role: UserRole = Field(default=UserRole.PATIENT)
-    phone: Optional[str] = None
-
-
-class UserCreate(UserBase):
-    """Schema for user creation requests"""
-    password: str
-    confirm_password: str
-
-    @field_validator('confirm_password')
-    def passwords_match(cls, v, info):
-        values = info.data
-        if 'password' in values and v != values['password']:
-            raise ValueError('passwords do not match')
-        return v
-
-
-class UserUpdate(BaseModel):
-    """Schema for user update requests"""
-    email: Optional[EmailStr] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    phone: Optional[str] = None
-    is_active: Optional[bool] = None
+    # Removing duplicate UserBase and UserCreate class definitions 
+    # to fix the conflict between the two UserCreate classes
 
 
 class UserPasswordChange(BaseModel):
@@ -205,12 +199,7 @@ class UserPasswordChange(BaseModel):
         return v
 
 
-class UserResponse(UserBase):
-    """Schema for user response data"""
-    id: str
-    is_active: bool
-
-    model_config = ConfigDict(from_attributes=True)
+# Note: UserResponse is already defined above
 
 
 class PatientProfile(BaseModel):
@@ -223,8 +212,7 @@ class PatientProfile(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClinicianProfile(BaseModel):
@@ -236,8 +224,7 @@ class ClinicianProfile(BaseModel):
     biography: Optional[str] = None
     accepting_new_patients: bool = True
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PatientResponse(UserResponse):
@@ -248,6 +235,8 @@ class PatientResponse(UserResponse):
 class ClinicianResponse(UserResponse):
     """Complete clinician response including profile data"""
     profile: Optional[ClinicianProfile] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):

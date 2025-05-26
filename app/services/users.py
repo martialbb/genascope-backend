@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, TypeVar, Union
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import uuid
@@ -14,6 +14,9 @@ from app.services.base import BaseService
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# Type variable for generic model conversions
+T = TypeVar('T')
+
 class UserService(BaseService):
     """
     Service for user-related operations
@@ -24,14 +27,39 @@ class UserService(BaseService):
         self.account_repository = AccountRepository(db)
         self.profile_repository = PatientProfileRepository(db)
     
+    def _model_to_dict(self, model_data: Any, exclude_unset: bool = False) -> Dict[str, Any]:
+        """
+        Convert a Pydantic model to a dictionary.
+        
+        Args:
+            model_data: Pydantic model or dict-like object
+            exclude_unset: Whether to exclude unset fields (for updates)
+            
+        Returns:
+            Dictionary representation of the model
+        """
+        # Handle Pydantic v1.x models
+        if hasattr(model_data, 'dict'):
+            if exclude_unset:
+                return model_data.dict(exclude_unset=True)
+            return model_data.dict()
+        # Handle Pydantic v2.x models
+        elif hasattr(model_data, 'model_dump'):
+            if exclude_unset:
+                return model_data.model_dump(exclude_unset=True)
+            return model_data.model_dump()
+        # Handle regular dictionaries or dict-like objects
+        else:
+            return dict(model_data)
+    
     def create_clinician(self, user_data, profile_data):
         """
         Create a new clinician user and associated profile.
         """
         user = self.user_repository.create_user(user_data)
-        profile_data = dict(profile_data)  # Copy to avoid mutating input
-        profile_data["user_id"] = user.id
-        profile = self.profile_repository.create_profile(profile_data)
+        profile_dict = self._model_to_dict(profile_data)  # Convert using helper method
+        profile_dict["user_id"] = user.id
+        profile = self.profile_repository.create_profile(profile_dict)
         
         return {"user": user, "profile": profile}
     
@@ -86,20 +114,26 @@ class UserService(BaseService):
     
     def create_user(self, user_data: Dict[str, Any]) -> User:
         """Create a new user"""
+        user_dict = self._model_to_dict(user_data)
+            
         # Check if user with email already exists
-        if self.user_repository.get_by_email(user_data["email"]):
+        if self.user_repository.get_by_email(user_dict["email"]):
             raise HTTPException(status_code=400, detail="Email already registered")
         
         # Generate ID if not provided
-        if "id" not in user_data:
-            user_data["id"] = str(uuid.uuid4())
+        if "id" not in user_dict:
+            user_dict["id"] = str(uuid.uuid4())
         
         # Hash the password
-        if "password" in user_data:
-            user_data["hashed_password"] = self.get_password_hash(user_data.pop("password"))
+        if "password" in user_dict:
+            user_dict["hashed_password"] = self.get_password_hash(user_dict.pop("password"))
+            
+        # Remove confirm_password field as it's not in the database model
+        if "confirm_password" in user_dict:
+            user_dict.pop("confirm_password")
         
         # Create the user
-        return self.user_repository.create_user(user_data)
+        return self.user_repository.create_user(user_dict)
     
     def create_patient(self, patient_data: Dict[str, Any], profile_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a new patient with profile"""
@@ -111,20 +145,59 @@ class UserService(BaseService):
         
         # Create profile if provided
         if profile_data:
-            profile_data["id"] = str(uuid.uuid4())
-            profile_data["user_id"] = patient.id
-            profile = self.profile_repository.create_profile(profile_data)
+            profile_dict = self._model_to_dict(profile_data)
+            profile_dict["id"] = str(uuid.uuid4())
+            profile_dict["user_id"] = patient.id
+            profile = self.profile_repository.create_profile(profile_dict)
             return {"user": patient, "profile": profile}
         
         return {"user": patient, "profile": None}
     
     def update_user(self, user_id: str, user_data: Dict[str, Any]) -> Optional[User]:
         """Update an existing user"""
-        # Handle password updates
-        if "password" in user_data:
-            user_data["hashed_password"] = self.get_password_hash(user_data.pop("password"))
+        user_dict = self._model_to_dict(user_data, exclude_unset=True)
         
-        return self.user_repository.update_user(user_id, user_data)
+        # Debug the conversion
+        print(f"DEBUG Service: Updating user {user_id} with data: {user_dict}")
+        
+        # Get the current user for comparison and validation
+        current_user = self.user_repository.get_by_id(user_id)
+        if not current_user:
+            print(f"DEBUG Service: User {user_id} not found")
+            return None
+            
+        # Handle password updates
+        if "password" in user_dict:
+            user_dict["hashed_password"] = self.get_password_hash(user_dict.pop("password"))
+        
+        # Ensure role is properly handled if it exists
+        if "role" in user_dict and user_dict["role"] is not None:
+            print(f"DEBUG Service: Role value in update: {user_dict['role']} (type: {type(user_dict['role']).__name__})")
+            
+            # Make sure we're using the correct enum value
+            from app.models.user import UserRole
+            try:
+                if isinstance(user_dict['role'], str):
+                    user_dict['role'] = UserRole(user_dict['role'])
+                    print(f"DEBUG: Converted role string to enum: {user_dict['role']}")
+            except ValueError as e:
+                print(f"DEBUG: Error converting role: {e}")
+                # Keep the original value if conversion fails
+                
+        # Debug the final update data
+        print(f"DEBUG Service: Final update data for user {user_id}: {user_dict}")
+        print(f"DEBUG Service: Current user values - name: {current_user.name}, role: {current_user.role}")
+        
+        # Update the user
+        updated_user = self.user_repository.update_user(user_id, user_dict)
+        
+        # Validate the update was successful
+        if updated_user:
+            print(f"DEBUG Service: After update - name: {updated_user.name}, role: {updated_user.role}")
+        else:
+            print(f"DEBUG Service: Update failed for user {user_id}")
+            
+        return updated_user
     
     def delete_user(self, user_id: str) -> bool:
         """Delete a user"""
@@ -178,19 +251,23 @@ class UserService(BaseService):
     
     def create_account(self, account_data: Dict[str, Any]) -> Account:
         """Create a new account"""
+        account_dict = self._model_to_dict(account_data)
+            
         # Check if account with domain already exists
-        if self.account_repository.get_by_domain(account_data["domain"]):
+        if self.account_repository.get_by_domain(account_dict["domain"]):
             raise HTTPException(status_code=400, detail="Domain already registered")
         
         # Generate ID if not provided
-        if "id" not in account_data:
-            account_data["id"] = str(uuid.uuid4())
+        if "id" not in account_dict:
+            account_dict["id"] = str(uuid.uuid4())
         
-        return self.account_repository.create_account(account_data)
+        return self.account_repository.create_account(account_dict)
     
     def update_account(self, account_id: str, account_data: Dict[str, Any]) -> Optional[Account]:
         """Update an existing account"""
-        return self.account_repository.update_account(account_id, account_data)
+        account_dict = self._model_to_dict(account_data, exclude_unset=True)
+            
+        return self.account_repository.update_account(account_id, account_dict)
     
     def get_account_by_id(self, account_id: str) -> Optional[Account]:
         """Get an account by ID"""
@@ -206,7 +283,9 @@ class UserService(BaseService):
     
     def update_patient_profile(self, profile_id: str, profile_data: Dict[str, Any]) -> Optional[PatientProfile]:
         """Update a patient's profile"""
-        return self.profile_repository.update_profile(profile_id, profile_data)
+        profile_dict = self._model_to_dict(profile_data, exclude_unset=True)
+            
+        return self.profile_repository.update_profile(profile_id, profile_dict)
     
     def generate_password(self, length: int = 12) -> str:
         """Generate a secure random password with at least one letter, one digit, and one special character"""
