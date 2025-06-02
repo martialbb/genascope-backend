@@ -2,56 +2,86 @@
 
 ## Overview
 
-The Genascope backend is a FastAPI-based application that provides RESTful API endpoints to support the Genascope frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, and lab integrations.
+The Genascope backend is a FastAPI-based application that provides RESTful API endpoints to support the Genascope frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, and lab integrations. This documentation reflects the current state as of June 2025, including recent bug fixes and improvements for user management, invite system reliability, and enhanced authentication robustness.
+
+## Recent Improvements (June 2025)
+
+### User Management Enhancements
+- **Account ID Resolution**: Fixed account_id mismatch issues that caused 403 Forbidden errors during user operations
+- **Cascade Deletion**: Implemented proper foreign key cascade handling for user deletion operations
+- **User-Patient Relationship**: Enhanced relationship management between users and patient profiles
+
+### Invite System Fixes
+- **Null Handling**: Resolved "User not found" errors for invites with null clinician_id values
+- **Schema Validation**: Improved API request/response validation for edge cases
+- **Error Recovery**: Enhanced error handling and fallback mechanisms
+
+### Authentication & Authorization
+- **JWT Token Validation**: Strengthened token validation and user role management
+- **Session Management**: Improved session handling and token refresh mechanisms
+- **Role-Based Access**: Enhanced role-based routing and permission checking
 
 ## Project Structure
 
-The project follows a typical FastAPI project structure:
+The project follows a unified full-stack architecture within the genascope-frontend repository:
 
 ```
-cancer-genix-backend/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # Main FastAPI application entry point
-│   ├── api/                 # API modules
-│   │   ├── __init__.py      # Router registration
-│   │   ├── auth.py          # Authentication endpoints
-│   │   ├── chat.py          # Chat endpoints
-│   │   ├── eligibility.py   # Eligibility analysis endpoints
-│   │   ├── admin.py         # Admin endpoints
-│   │   ├── account.py       # Account management endpoints
-│   │   ├── appointments.py  # Appointment scheduling endpoints
-│   │   ├── invites.py       # Patient invite endpoints
-│   │   └── labs.py          # Lab integration endpoints
-│   ├── schemas/             # Pydantic models (DTOs)
-│   │   ├── __init__.py      # Schema exports
-│   │   ├── chat.py          # Chat-related schemas
-│   │   ├── users.py         # User-related schemas
-│   │   ├── appointments.py  # Appointment-related schemas
-│   │   ├── labs.py          # Lab test-related schemas
-│   │   ├── common.py        # Common utility schemas
-│   │   └── README.md        # Schema documentation
-│   ├── models/              # Database models
+genascope-frontend/
+├── backend/                 # Backend FastAPI application
+│   ├── app/
 │   │   ├── __init__.py
-│   │   └── appointment.py   # Appointment-related models
-│   ├── db/                  # Database connection
-│   │   └── database.py      # Database connection and session management
-│   ├── tests/               # Test modules
-│   │   ├── __init__.py
-│   │   ├── api/             # API tests
+│   │   ├── main.py              # Main FastAPI application entry point
+│   │   ├── api/                 # API modules
+│   │   │   ├── __init__.py      # Router registration
+│   │   │   ├── auth.py          # Authentication endpoints
+│   │   │   ├── chat.py          # Chat endpoints
+│   │   │   ├── eligibility.py   # Eligibility analysis endpoints
+│   │   │   ├── admin.py         # Admin endpoints
+│   │   │   ├── account.py       # Account management endpoints
+│   │   │   ├── appointments.py  # Appointment scheduling endpoints
+│   │   │   ├── invites.py       # Patient invite endpoints (fixed June 2025)
+│   │   │   ├── users.py         # User management endpoints (enhanced)
+│   │   │   └── labs.py          # Lab integration endpoints
+│   │   ├── schemas/             # Pydantic models (DTOs)
+│   │   │   ├── __init__.py      # Schema exports
+│   │   │   ├── chat.py          # Chat-related schemas
+│   │   │   ├── users.py         # User-related schemas (updated validation)
+│   │   │   ├── appointments.py  # Appointment-related schemas
+│   │   │   ├── labs.py          # Lab test-related schemas
+│   │   │   ├── common.py        # Common utility schemas
+│   │   │   └── README.md        # Schema documentation
+│   │   ├── models/              # Database models
 │   │   │   ├── __init__.py
-│   │   │   ├── test_appointments.py           # Unit tests for appointments
-│   │   │   ├── test_appointments_integration.py # Integration tests
-│   │   │   └── test_appointments_e2e.py       # End-to-end tests
-│   │   ├���─ mock_models.py   # Mock models for testing
-│   │   └── test_utils.py    # Test utilities
-│   └── utils/               # Utility functions
-├── .env                     # Environment variables
-├── .env.example             # Example environment variables
-├── requirements.txt         # Python dependencies
-├── pytest.ini               # Test configuration
-├── Dockerfile               # Docker configuration
-└── README.md                # Basic documentation
+│   │   │   ├── user.py          # User models with cascade deletion
+│   │   │   ├── patient.py       # Patient models with enhanced relationships
+│   │   │   └── appointment.py   # Appointment-related models
+│   │   ├── services/            # Business logic layer
+│   │   │   ├── __init__.py
+│   │   │   ├── user_service.py  # User management with improved error handling
+│   │   │   ├── invite_service.py # Invite service with null handling fixes
+│   │   │   └── README.md        # Service documentation
+│   │   ├── repositories/        # Data access layer
+│   │   │   ├── __init__.py
+│   │   │   ├── user_repository.py # Enhanced user CRUD operations
+│   │   │   └── README.md        # Repository documentation
+│   │   ├── db/                  # Database connection
+│   │   │   └── database.py      # Database connection and session management
+│   │   ├── tests/               # Test modules
+│   │   │   ├── __init__.py
+│   │   │   ├── api/             # API tests
+│   │   │   ├── integration/     # Integration tests
+│   │   │   ├── unit/            # Unit tests
+│   │   │   └── README.md        # Testing documentation
+│   │   └── utils/               # Utility functions
+│   ├── .env                     # Environment variables
+│   ├── .env.example             # Example environment variables
+│   ├── requirements.txt         # Python dependencies
+│   ├── BACKEND_DOCUMENTATION.md # This documentation
+│   └── README.md                # Backend-specific README
+├── src/                     # Frontend Astro/React application
+├── docker-compose.yml       # Production Docker setup
+├── docker-compose.dev.yml   # Development Docker setup with MailDev
+└── README.md                # Main project documentation
 ```
 
 ## Architecture
