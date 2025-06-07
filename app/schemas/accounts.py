@@ -5,7 +5,6 @@ from datetime import datetime
 class AccountBase(BaseModel):
     """Base schema for account data"""
     name: str = Field(..., description="Account name")
-    domain: str = Field(..., description="Account domain")
 
 class AccountCreate(AccountBase):
     """Schema for creating new accounts"""
@@ -23,8 +22,7 @@ class AccountCreate(AccountBase):
 class AccountUpdate(BaseModel):
     """Schema for updating existing accounts"""
     name: Optional[str] = Field(None, description="Account name")
-    domain: Optional[str] = Field(None, description="Account domain")
-    is_active: Optional[bool] = Field(None, description="Whether the account is active")
+    status: Optional[str] = Field(None, description="Account status")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -32,8 +30,7 @@ class AccountResponse(BaseModel):
     """Schema for account responses"""
     id: str = Field(..., description="Account ID")
     name: str = Field(..., description="Account name")
-    domain: str = Field(..., description="Account domain")
-    is_active: bool = Field(..., description="Whether the account is active")
+    status: str = Field(..., description="Account status")
     created_at: datetime = Field(..., description="Account creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 

@@ -4,10 +4,11 @@ Pydantic schema models for user data transfer objects.
 These schemas define the structure for request and response payloads
 related to user accounts, including patients and clinicians.
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, field_serializer, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from enum import Enum
+from uuid import UUID
 
 
 class UserRole(str, Enum):
@@ -75,6 +76,14 @@ class UserInDB(UserBase):
     updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('id', 'account_id', 'clinician_id', mode='before')
+    @classmethod
+    def convert_uuid_to_string(cls, value):
+        """Convert UUID fields to strings before validation"""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class UserResponse(UserBase):
@@ -82,6 +91,14 @@ class UserResponse(UserBase):
     id: str
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('id', 'account_id', 'clinician_id', mode='before')
+    @classmethod
+    def convert_uuid_to_string(cls, value):
+        """Convert UUID fields to strings before validation"""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class PatientProfileBase(BaseModel):
@@ -113,6 +130,14 @@ class PatientProfileInDB(PatientProfileBase):
     updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('id', 'user_id', mode='before')
+    @classmethod
+    def convert_uuid_to_string(cls, value):
+        """Convert UUID fields to strings before validation"""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class PatientProfileResponse(PatientProfileBase):
@@ -121,6 +146,14 @@ class PatientProfileResponse(PatientProfileBase):
     user_id: str
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('id', 'user_id', mode='before')
+    @classmethod
+    def convert_uuid_to_string(cls, value):
+        """Convert UUID fields to strings before validation"""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class PatientCreate(UserCreate):

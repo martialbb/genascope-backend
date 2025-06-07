@@ -1,0 +1,7 @@
+2025-06-02 00:28:27,376 - ERROR - Migration failed: [Errno 2] No such file or directory: 'migration_backups/20250602_000401/migration_config.yml'
+2025-06-02 00:29:01,419 - ERROR - Migration failed: [Errno 2] No such file or directory: '../migration_backups/20250602_000401/migration_config.yml'
+2025-06-02 00:30:20,013 - ERROR - Migration failed: [Errno 2] No such file or directory: '../migration_backups/20250602_000401/migration_config.yml'
+2025-06-02 00:31:32,226 - INFO - Starting MySQL to PostgreSQL migration...
+2025-06-02 00:31:32,231 - ERROR - Failed to connect to databases: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 61] Connection refused)")
+2025-06-02 00:31:32,231 - ERROR - Migration failed: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 61] Connection refused)")
+2025-06-02 00:31:32,231 - ERROR - Migration failed: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 61] Connection refused)")

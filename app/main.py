@@ -36,10 +36,13 @@ app = FastAPI(
 # Configure CORS - update with your frontend URL when deployed
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:4321"],
+    allow_origins=["http://localhost:3000", "http://localhost:4321", "http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    # Ensure CORS headers are added even to error responses
+    allow_origin_regex="",  # Allow origins based on regex pattern if needed
 )
 
 # Include API router

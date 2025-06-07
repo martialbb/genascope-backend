@@ -21,7 +21,7 @@ class User(Base):
     email = Column(String, nullable=False, unique=True)
     hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), nullable=False)
+    role = Column(String, nullable=False)
     account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())

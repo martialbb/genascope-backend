@@ -14,7 +14,7 @@ class Appointment(Base):
     clinician_id = Column(String(36), index=True)
     patient_id = Column(String(36), index=True)
     date = Column(Date, nullable=False)  # Added for compatibility with repo/service/tests
-    date_time = Column(DateTime, nullable=False)  # Changed from date+time to single field
+    scheduled_at = Column(DateTime, nullable=False)  # Changed from date_time to match actual DB schema
     time = Column(Time, nullable=False)  # Added for compatibility with service/tests
     appointment_type = Column(String(20), default="virtual")
     status = Column(String(20), default="scheduled")

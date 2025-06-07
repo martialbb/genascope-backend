@@ -5,9 +5,9 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # Import your app's Base and models
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app')))
-from db.database import Base  # app.db.database.Base
-from core.config import settings  # app.core.config.settings
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from app.db.database import Base
+from app.core.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -26,6 +26,16 @@ async def verify_user_management_permissions(current_user: User = Depends(get_cu
         )
     return current_user
 
+# Allow clinicians to view users (read-only) in their account
+async def verify_user_view_permissions(current_user: User = Depends(get_current_active_user)):
+    """Dependency to verify user has permissions to view users"""
+    if current_user.role not in ["admin", "super_admin", "clinician"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view users"
+        )
+    return current_user
+
 @router.get("/", response_model=List[UserResponse], summary="List Users")
 async def get_users(
     role: Optional[str] = Query(None, description="Filter users by role (e.g., admin, clinician, patient)"),
@@ -33,17 +43,18 @@ async def get_users(
     search: Optional[str] = Query(None, description="Search users by name or email"),
     skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of records to return"),
-    current_user: User = Depends(verify_user_management_permissions),
+    current_user: User = Depends(verify_user_view_permissions),
     db: Session = Depends(get_db)
 ):
     """
     Retrieve a list of users with filtering, searching and pagination options.
 
-    - **Permissions**: Requires admin or super_admin role
+    - **Permissions**: Requires admin, super_admin, or clinician role
     - **Filtering**: Filter by role, account_id
     - **Search**: Search by name or email (case-insensitive)
     - **Pagination**: Use skip and limit parameters
 
+    Clinicians can only see other clinicians in their own account.
     Regular admins can only see users in their own account.
     Super admins can see all users across accounts.
 
@@ -51,17 +62,26 @@ async def get_users(
     """
     user_service = UserService(db)
 
-    # Regular admins can only see users in their own account
-    if current_user.role == "admin" and (not account_id or account_id != current_user.account_id):
+    # Apply role-based access restrictions
+    if current_user.role == "clinician":
+        # Clinicians can only see other clinicians in their account
+        account_id = current_user.account_id
+        role = "clinician"  # Force role filter to clinician
+    elif current_user.role == "admin" and (not account_id or account_id != current_user.account_id):
+        # Regular admins can only see users in their own account
         account_id = current_user.account_id
 
-    return user_service.get_users(
+    users = user_service.get_users(
         role=role,
         account_id=account_id,
         search=search,
         skip=skip,
         limit=limit
     )
+    
+    # Convert database User objects to UserResponse schema objects
+    from app.schemas.users import UserResponse
+    return [UserResponse.model_validate(user) for user in users]
 
 @router.get("/{user_id}", response_model=UserResponse, summary="Get User")
 async def get_user(

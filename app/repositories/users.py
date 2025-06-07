@@ -23,9 +23,20 @@ class UserRepository(BaseRepository):
         """Get all users for a specific account"""
         return self.db.query(User).filter(User.account_id == account_id).all()
     
-    def get_users_by_role(self, role: UserRole) -> List[User]:
-        """Get all users with a specific role"""
-        return self.db.query(User).filter(User.role == role).all()
+    def get_users_by_role(self, roles: List[UserRole]) -> List[User]:
+        """Get all users with specific roles"""
+        if not roles:
+            return []
+        return self.db.query(User).filter(User.role.in_(roles)).all()
+    
+    def get_users_by_role_and_account(self, roles: List[UserRole], account_id: str) -> List[User]:
+        """Get all users with specific roles in a specific account"""
+        if not roles:
+            return []
+        return self.db.query(User).filter(
+            User.role.in_(roles),
+            User.account_id == account_id
+        ).all()
     
     def get_patients_by_clinician(self, clinician_id: str) -> List[User]:
         """Get all patients assigned to a specific clinician"""
@@ -82,13 +93,24 @@ class UserRepository(BaseRepository):
             raise
 
     def delete_user(self, user_id: str) -> bool:
-        """Delete a user"""
+        """Delete a user and related data"""
         user = self.get_by_id(user_id)
         if not user:
             return False
-        self.db.delete(user)
-        self.db.commit()
-        return True
+        
+        try:
+            # Delete related patient profile if exists
+            patient_profile = self.db.query(PatientProfile).filter(PatientProfile.user_id == user_id).first()
+            if patient_profile:
+                self.db.delete(patient_profile)
+            
+            # Delete the user
+            self.db.delete(user)
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise
 
     def get_users(
         self,

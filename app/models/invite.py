@@ -5,18 +5,17 @@ from app.db.database import Base
 import uuid
 from datetime import datetime, timedelta
 from app.models.user import User
+# Avoiding circular imports - using string references in relationships instead
 
 
 class PatientInvite(Base):
     """Patient invitation model"""
-    __tablename__ = "patient_invites"
+    __tablename__ = "invites"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"))
-    email = Column(String, nullable=False, index=True)
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
-    phone = Column(String, nullable=True)
+    provider_id = Column(String, ForeignKey("users.id"), nullable=True)  # Changed from user_id to match DB
+    patient_id = Column(String, ForeignKey("patients.id"), nullable=False)  # Link to pre-created patient
+    email = Column(String, nullable=False, index=True)  # Redundant with patient.email but kept for performance
     invite_token = Column(String, nullable=False, unique=True)
     clinician_id = Column(String, ForeignKey("users.id"), nullable=False)
     status = Column(String, nullable=False, default="pending")  # pending, accepted, expired, revoked
@@ -28,5 +27,7 @@ class PatientInvite(Base):
     accepted_at = Column(DateTime, nullable=True)
 
     # Relationships
-    user = relationship("User", foreign_keys=[user_id])
-    clinician = relationship("User", foreign_keys=[clinician_id], backref="patient_invites")
+    provider = relationship("User", foreign_keys=[provider_id])  # Changed from user to provider
+    clinician = relationship("User", foreign_keys=[clinician_id], backref="sent_invites")
+    # Using string lookup for related class to avoid circular imports
+    patient = relationship("Patient", foreign_keys=[patient_id], back_populates="invites")

@@ -1,4 +1,4 @@
-"""create patient_invites table
+"""create invites table
 
 Revision ID: 72b453920928
 Revises: bcc9e2f6f6b4
@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     op.create_table(
-        'patient_invites',
+        'invites',
         sa.Column('id', sa.String(length=36), primary_key=True),
         sa.Column('user_id', sa.String(length=36), nullable=True),
         sa.Column('email', sa.String(length=255), nullable=False),
@@ -42,4 +42,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_table('patient_invites')
+    op.drop_table('invites')

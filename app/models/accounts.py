@@ -12,8 +12,7 @@ class Account(Base):
 
     id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
-    domain = Column(String, nullable=False, unique=True)
-    is_active = Column(Boolean, default=True)
+    status = Column(String, nullable=False, default='active')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=True)
 

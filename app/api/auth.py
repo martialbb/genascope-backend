@@ -23,16 +23,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 class User:
     def __init__(self, username: str, email: Optional[str] = None, 
                  full_name: Optional[str] = None, disabled: Optional[bool] = None,
-                 user_id: Optional[str] = None, role: Optional[str] = None):
+                 user_id: Optional[str] = None, role: Optional[str] = None,
+                 account_id: Optional[str] = None):
         self.username = username
         self.email = email or username
         self.full_name = full_name
         self.disabled = disabled
         self.id = user_id
         self.role = role  # Make sure role is properly initialized
+        self.account_id = account_id  # Add account_id attribute
 
     def __str__(self):
-        return f"User(id={self.id}, username={self.username}, role={self.role})"
+        return f"User(id={self.id}, username={self.username}, role={self.role}, account_id={self.account_id})"
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token"""
@@ -42,7 +44,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Enhanced get_current_user function with debugging
+# Enhanced get_current_user function
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Get the current authenticated user from token"""
     credentials_exception = HTTPException(
@@ -51,40 +53,34 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    print(f"Auth Debug: Received token: {token[:10]}...")
-
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")  # Use 'sub' for email
         user_id: str = payload.get("id")
         
         if email is None or user_id is None:
-            print("Auth Debug: No subject (sub) in token")
             raise credentials_exception
             
         token_data = TokenData(email=email, user_id=user_id)
-        print(f"Auth Debug: Token decoded successfully for user: {email}")
 
         # Get user from database
         user_service = UserService(db)
         db_user = user_service.get_user_by_email(token_data.email)
 
         if db_user is None:
-            print(f"Auth Debug: User not found in database for email: {token_data.email}")
             raise credentials_exception
 
-        print(f"Auth Debug: User found: id={db_user.id}, role={db_user.role}")
         return User(
             username=db_user.email,
             email=db_user.email,
             full_name=db_user.name,
             disabled=not db_user.is_active,
             user_id=db_user.id,
-            role=db_user.role.value
+            role=db_user.role,
+            account_id=db_user.account_id
         )
 
     except JWTError as e:
-        print(f"Auth Debug: JWT Error: {str(e)}")
         raise credentials_exception
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
@@ -114,7 +110,7 @@ async def login_for_access_token(
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email, "id": user.id, "role": user.role.value},
+        data={"sub": user.email, "id": str(user.id), "role": user.role},
         expires_delta=access_token_expires
     )
     
@@ -145,10 +141,29 @@ async def register_user(
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     """Get the current user's information"""
     return {
-        "id": current_user.id,
+        "id": str(current_user.id),
         "email": current_user.email,
         "name": current_user.full_name,
         "role": current_user.role,
-        "is_active": not current_user.disabled
+        "is_active": not current_user.disabled,
+        "account_id": str(current_user.account_id) if current_user.account_id else None,
+        "clinician_id": None  # Will be implemented when needed
     }
+
+def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
+    """Authenticate a user - wrapper function for tests"""
+    user_service = UserService(db)
+    db_user = user_service.authenticate_user(username, password)
+    
+    if not db_user:
+        return None
+        
+    return User(
+        username=db_user.email,
+        email=db_user.email,
+        full_name=db_user.name,
+        disabled=not db_user.is_active,
+        user_id=db_user.id,
+        role=db_user.role.value
+    )
 

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Path
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.db.database import get_db
 from app.api.auth import get_current_active_user, User
@@ -30,6 +31,7 @@ async def verify_admin_or_super_admin(current_user: User = Depends(get_current_a
         )
     return current_user
 
+
 @router.get("/", response_model=List[AccountResponse], summary="List Accounts")
 async def get_accounts(
     skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
@@ -39,20 +41,81 @@ async def get_accounts(
     db: Session = Depends(get_db)
 ):
     """
-    Retrieve a list of all accounts with filtering and pagination options.
+    Retrieve a list of accounts based on user permissions.
 
     - **Permissions**: Requires admin or super_admin role
     - **Pagination**: Use skip and limit parameters
     - **Filtering**: Filter by name (optional)
 
+    **Access Control:**
+    - Super admins can see all accounts
+    - Regular admins can only see their own account
+
     Returns a list of accounts the current user has access to.
-    Super admins can see all accounts, while regular admins only see their own.
     """
-    # Debug print - this will show in your logs if the endpoint is hit
     print(f"Debug: get_accounts called by user {current_user.id} with role {current_user.role}")
 
-    account_service = AccountService(db)
-    return account_service.get_accounts(skip=skip, limit=limit, name=name)
+    try:
+        # Use AccountService following the proper service layer pattern
+        account_service = AccountService(db)
+        
+        # Apply role-based access control
+        if current_user.role == "super_admin":
+            # Super admins can see all accounts
+            accounts = account_service.get_accounts(skip=skip, limit=limit, name=name)
+            print(f"Debug: Super admin - retrieved all accounts")
+        elif current_user.role == "admin":
+            # Regular admins can only see their own account
+            if not hasattr(current_user, 'account_id') or not current_user.account_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin user must be associated with an account"
+                )
+            
+            # Get only the admin's own account
+            user_account = account_service.get_account(current_user.account_id)
+            if not user_account:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Admin's account not found"
+                )
+            
+            # Apply name filtering if provided
+            if name and name.lower() not in user_account.name.lower():
+                accounts = []  # Filter out if name doesn't match
+            else:
+                accounts = [user_account]
+            
+            print(f"Debug: Regular admin - retrieved own account only: {user_account.name}")
+        else:
+            # This shouldn't happen due to the dependency, but just in case
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to access accounts"
+            )
+        
+        # Convert to response format
+        result = []
+        for account in accounts:
+            result.append({
+                "id": str(account.id),
+                "name": account.name,
+                "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
+                "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
+                "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
+            })
+        
+        print(f"Debug: Successfully retrieved {len(result)} accounts")
+        return result
+        
+    except Exception as e:
+        print(f"Debug: Error in get_accounts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve accounts: {str(e)}"
+        )
 
 @router.get("/{account_id}", response_model=AccountResponse, summary="Get Account")
 async def get_account(
@@ -68,14 +131,41 @@ async def get_account(
 
     Returns details for the specified account if the user has permission to view it.
     """
-    account_service = AccountService(db)
-    account = account_service.get_account(account_id)
-    if not account:
+    print(f"Debug: get_account called for account_id {account_id} by user {current_user.id}")
+    
+    try:
+        # Use AccountService following the proper service layer pattern
+        account_service = AccountService(db)
+        account = account_service.get_account(account_id)
+        
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account not found"
+            )
+        
+        # Convert to response format
+        result = {
+            "id": str(account.id),
+            "name": account.name,
+            "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
+            "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
+            "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
+        }
+        
+        print(f"Debug: Successfully retrieved account {account_id}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Debug: Error in get_account: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve account: {str(e)}"
         )
-    return account
 
 @router.post("/", response_model=AccountResponse, status_code=status.HTTP_201_CREATED, summary="Create Account")
 async def create_account(
@@ -109,7 +199,17 @@ async def create_account(
     account_service = AccountService(db)
     try:
         account = account_service.create_account(account_data)
-        return account
+        
+        # Convert to response format
+        result = {
+            "id": str(account.id),
+            "name": account.name,
+            "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
+            "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
+            "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
+        }
+        
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -152,7 +252,19 @@ async def update_account(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Account not found"
             )
-        return updated_account
+        
+        # Convert to response format
+        result = {
+            "id": str(updated_account.id),
+            "name": updated_account.name,
+            "status": getattr(updated_account, 'status', 'active'),  # Handle missing status field gracefully
+            "created_at": updated_account.created_at.isoformat() if hasattr(updated_account, 'created_at') and updated_account.created_at else None,
+            "updated_at": updated_account.updated_at.isoformat() if hasattr(updated_account, 'updated_at') and updated_account.updated_at else None
+        }
+        
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

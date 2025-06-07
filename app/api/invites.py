@@ -1,16 +1,19 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Request, Query
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
+import traceback
 from app.db.database import get_db
 from app.api.auth import get_current_active_user, User
 from app.services.invites import InviteService
 from app.services.users import UserService
+from app.services.patients import PatientService
 from app.models.user import UserRole
 from app.schemas.invites import (
     PatientInviteCreate, PatientInviteResponse, BulkInviteCreate, BulkInviteResponse,
     InviteResend, InviteVerification, InviteVerificationResponse, PatientRegistration,
-    InviteStatus
+    InviteStatus, InviteListResponse, InviteListParams
 )
+from app.schemas.users import UserResponse
 from app.schemas.common import SuccessResponse
 from datetime import datetime
 
@@ -19,12 +22,14 @@ router = APIRouter(prefix="/api", tags=["invites"])
 @router.post("/generate_invite", response_model=PatientInviteResponse)
 async def generate_invite(
     request: Request,
-    patient_data: PatientInviteCreate,
+    invite_data: PatientInviteCreate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a unique patient invite URL
+    
+    This endpoint now requires a pre-created patient_id
     """
     # Only clinicians and admins can create invites
     if current_user.role not in [UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
@@ -35,37 +40,83 @@ async def generate_invite(
     
     invite_service = InviteService(db)
     user_service = UserService(db)
+    patient_service = PatientService(db)
     
-    invite_data = {
-        "email": patient_data.email,
-        "first_name": patient_data.first_name,
-        "last_name": patient_data.last_name,
-        "phone": patient_data.phone,
-        "clinician_id": patient_data.provider_id or current_user.id,
-        "custom_message": patient_data.custom_message
+    # Use provided provider_id or fall back to current user
+    provider_id = invite_data.provider_id if invite_data.provider_id else current_user.id
+    
+    # Debug logging
+    print(f"DEBUG: generate_invite called by user {current_user.id} ({current_user.role})")
+    print(f"DEBUG: provider_id from request: {invite_data.provider_id}")
+    print(f"DEBUG: using provider_id: {provider_id}")
+    print(f"DEBUG: patient_id from request: {invite_data.patient_id}")
+    
+    # Validate the provider exists and has appropriate role
+    provider = user_service.get_user_by_id(provider_id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Provider with ID {provider_id} not found"
+        )
+    
+    if provider.role not in [UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"User {provider.name} (role: {provider.role}) cannot be assigned as a provider. Only clinicians, admins, and super admins can be providers."
+        )
+    
+    # Get patient data to verify it exists
+    try:
+        patient_data = patient_service.get_patient_with_invite_status(invite_data.patient_id)
+        
+        # Check if patient already has a pending invite
+        if patient_data["has_pending_invite"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Patient already has a pending invite"
+            )
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient with ID {invite_data.patient_id} not found"
+            )
+        raise e
+    
+    # Create invitation data
+    invite_creation_data = {
+        "patient_id": invite_data.patient_id,
+        "email": patient_data["email"],  # Use email from patient record
+        "clinician_id": provider_id,
+        "custom_message": invite_data.custom_message
     }
     
-    if hasattr(patient_data, "expiry_days") and patient_data.expiry_days:
+    if invite_data.expiry_days:
         from datetime import timedelta
-        invite_data["expires_at"] = datetime.utcnow() + timedelta(days=patient_data.expiry_days)
+        invite_creation_data["expires_at"] = datetime.utcnow() + timedelta(days=invite_data.expiry_days)
     
-    try:
-        invite = invite_service.create_invite(invite_data)
+    # Store send_email separately for service logic - don't pass to PatientInvite model
+    send_email = invite_data.send_email if invite_data.send_email is not None else True
+    invite_creation_data["send_email"] = send_email
         
-        # Generate an invite URL with the invite token
-        base_url = str(request.base_url).rstrip("/")
-        invite_url = invite_service.generate_invite_url(invite, base_url)
+    try:
+        print(f"DEBUG: Calling create_invite with data: {invite_creation_data}")
+        invite = invite_service.create_invite(invite_creation_data)
+        print(f"DEBUG: Invite created successfully with ID: {invite.id} and token: {invite.invite_token}")
+        
+        # Generate an invite URL with the invite token using the frontend URL from settings
+        invite_url = invite_service.generate_invite_url(invite)
+        print(f"DEBUG: Generated invite URL: {invite_url}")
         
         # Get provider name
-        provider = user_service.get_user_by_id(invite.clinician_id)
-        provider_name = provider.name if provider else "Unknown Provider"
+        provider_name = provider.name
         
         return PatientInviteResponse(
-            invite_id=invite.id,
+            invite_id=str(invite.id),
             email=invite.email,
-            first_name=invite.first_name,
-            last_name=invite.last_name,
-            phone=invite.phone,
+            first_name=patient_data["first_name"],
+            last_name=patient_data["last_name"],
+            phone=patient_data["phone"],
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
@@ -75,8 +126,12 @@ async def generate_invite(
             accepted_at=invite.accepted_at
         )
     except HTTPException as e:
+        print(f"DEBUG: HTTPException in generate_invite: {e.detail}")
         raise e
     except Exception as e:
+        print(f"ERROR: Failed to create invite: {str(e)}")
+        import traceback
+        print(f"ERROR: Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create invite: {str(e)}"
@@ -101,44 +156,73 @@ async def bulk_invite(
     
     invite_service = InviteService(db)
     user_service = UserService(db)
+    patient_service = PatientService(db)
     
     # Process each invite in the bulk request
     invite_data_list = []
-    for patient in bulk_data.patients:
+    failed_invites = []
+    
+    for patient_invite in bulk_data.patients:
         from datetime import timedelta
         
-        invite_data = {
-            "email": patient.email,
-            "first_name": patient.first_name,
-            "last_name": patient.last_name,
-            "phone": patient.phone,
-            "clinician_id": patient.provider_id or current_user.id,
-            "custom_message": patient.custom_message or bulk_data.custom_message,
-            "expires_at": datetime.utcnow() + timedelta(days=patient.expiry_days)
-        }
-        invite_data_list.append(invite_data)
+        try:
+            # Get patient data to verify it exists
+            patient_data = patient_service.get_patient_with_invite_status(patient_invite.patient_id)
+            
+            # Skip patients who already have pending invites
+            if patient_data["has_pending_invite"]:
+                failed_invites.append({
+                    "data": {"patient_id": patient_invite.patient_id},
+                    "error": "Patient already has a pending invite"
+                })
+                continue
+                
+            # Create invitation data
+            invite_data = {
+                "patient_id": patient_invite.patient_id,
+                "email": patient_data["email"],
+                "first_name": patient_data["first_name"],
+                "last_name": patient_data["last_name"],
+                "phone": patient_data["phone"],
+                "clinician_id": patient_invite.provider_id or current_user.id,
+                "custom_message": patient_invite.custom_message or bulk_data.custom_message,
+                "expires_at": datetime.utcnow() + timedelta(days=patient_invite.expiry_days)
+            }
+            invite_data_list.append(invite_data)
+        except HTTPException as e:
+            failed_invites.append({
+                "data": {"patient_id": patient_invite.patient_id},
+                "error": str(e.detail)
+            })
+        except Exception as e:
+            failed_invites.append({
+                "data": {"patient_id": patient_invite.patient_id},
+                "error": str(e)
+            })
     
     # Create invites in bulk
-    successful, failed = invite_service.create_bulk_invites(invite_data_list, current_user.id)
+    successful, creation_failed = invite_service.create_bulk_invites(invite_data_list, current_user.id)
+    
+    # Combine pre-check failures with creation failures
+    failed = failed_invites + creation_failed
     
     # Convert successful invites to response format
     successful_responses = []
-    base_url = str(request.base_url).rstrip("/")
     
     for invite in successful:
-        # Generate an invite URL with the invite token
-        invite_url = invite_service.generate_invite_url(invite, base_url)
+        # Generate an invite URL with the invite token using frontend URL
+        invite_url = invite_service.generate_invite_url(invite)
         
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
         
         successful_responses.append(PatientInviteResponse(
-            invite_id=invite.id,
+            invite_id=str(invite.id),
             email=invite.email,
-            first_name=invite.first_name,
-            last_name=invite.last_name,
-            phone=invite.phone,
+            first_name=invite.patient.first_name if invite.patient else "",
+            last_name=invite.patient.last_name if invite.patient else "",
+            phone=invite.patient.phone if invite.patient else None,
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
@@ -175,23 +259,47 @@ async def resend_invite(
     invite_service = InviteService(db)
     user_service = UserService(db)
     
+    # Get the invite first to check permissions
+    invite = invite_service.get_invite_by_id(resend_data.invite_id)
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
+    
+    # Check account-based permissions
+    if current_user.role == UserRole.CLINICIAN:
+        # Clinicians can only resend their own invites
+        if invite.clinician_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to resend this invite"
+            )
+    elif current_user.role == UserRole.ADMIN:
+        # Admins can only resend invites for patients in their account
+        if invite.patient and invite.patient.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to resend this invite"
+            )
+    # Super admins can resend any invite
+    
     try:
         invite = invite_service.resend_invite(resend_data.invite_id, resend_data.custom_message)
         
-        # Generate an invite URL with the invite token
-        base_url = str(request.base_url).rstrip("/")
-        invite_url = invite_service.generate_invite_url(invite, base_url)
+        # Generate an invite URL with the invite token using frontend URL
+        invite_url = invite_service.generate_invite_url(invite)
         
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
         
         return PatientInviteResponse(
-            invite_id=invite.id,
+            invite_id=str(invite.id),
             email=invite.email,
-            first_name=invite.first_name,
-            last_name=invite.last_name,
-            phone=invite.phone,
+            first_name=invite.patient.first_name if invite.patient else "",
+            last_name=invite.patient.last_name if invite.patient else "",
+            phone=invite.patient.phone if invite.patient else None,
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
@@ -232,7 +340,7 @@ async def verify_invite(
         provider_name = provider.name if provider else "Unknown Provider"
         
         response.invite_id = invite.id
-        response.patient_name = f"{invite.first_name} {invite.last_name}"
+        response.patient_name = invite.patient.full_name if invite.patient else "Patient"
         response.provider_name = provider_name
         response.expires_at = invite.expires_at
     
@@ -290,11 +398,40 @@ async def get_pending_invites(
     """
     Get pending invites for a clinician
     """
-    # Check permissions
-    if current_user.id != clinician_id and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    from app.services.users import UserService
+    
+    user_service = UserService(db)
+    
+    # Check role-based permissions
+    if current_user.role == UserRole.SUPER_ADMIN:
+        # Super admins can view any clinician's invites
+        pass
+    elif current_user.role == UserRole.ADMIN:
+        # Regular admins can only view invites for clinicians in their account
+        if not current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not associated with any organization"
+            )
+        
+        # Verify the target clinician belongs to the same account
+        target_clinician = user_service.get_user_by_id(clinician_id)
+        if not target_clinician or target_clinician.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view these invites"
+            )
+    elif current_user.role == UserRole.CLINICIAN:
+        # Clinicians can only view their own invites
+        if current_user.id != clinician_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view these invites"
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these invites"
+            detail="Not authorized to view invites"
         )
     
     invite_service = InviteService(db)
@@ -304,22 +441,21 @@ async def get_pending_invites(
     
     # Convert to response format
     responses = []
-    base_url = str(request.base_url).rstrip("/")
     
     for invite in invites:
-        # Generate an invite URL with the invite token
-        invite_url = invite_service.generate_invite_url(invite, base_url)
+        # Generate an invite URL with the invite token using frontend URL
+        invite_url = invite_service.generate_invite_url(invite)
         
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
         
         responses.append(PatientInviteResponse(
-            invite_id=invite.id,
+            invite_id=str(invite.id),
             email=invite.email,
-            first_name=invite.first_name,
-            last_name=invite.last_name,
-            phone=invite.phone,
+            first_name=invite.patient.first_name if invite.patient else "",
+            last_name=invite.patient.last_name if invite.patient else "",
+            phone=invite.patient.phone if invite.patient else None,
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
@@ -352,11 +488,21 @@ async def revoke_invite(
         )
     
     # Check permissions
-    if invite.clinician_id != current_user.id and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to revoke this invite"
-        )
+    if current_user.role == UserRole.CLINICIAN:
+        # Clinicians can only revoke their own invites
+        if invite.clinician_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to revoke this invite"
+            )
+    elif current_user.role == UserRole.ADMIN:
+        # Admins can only revoke invites for patients in their account
+        if invite.patient and invite.patient.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to revoke this invite"
+            )
+    # Super admins can revoke any invite
     
     try:
         invite_service.revoke_invite(invite_id)
@@ -372,16 +518,317 @@ async def revoke_invite(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to revoke invite: {str(e)}"
         )
-    return PatientInviteResponse(
-        invite_id=invite_id,
-        invite_url=invite_url,
-        email=patient_data.email,
-        first_name=patient_data.first_name,
-        last_name=patient_data.last_name,
-        phone=patient_data.phone,
-        provider_id=patient_data.provider_id,
-        provider_name="Provider Name",  # This should come from a service/database
-        status="pending",
-        created_at=datetime.now(),
-        expires_at=datetime.now()  # This should be calculated properly
+
+@router.get("/invites", response_model=InviteListResponse)
+async def list_invites(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    clinician_id: Optional[str] = Query(None, description="Filter by clinician"),
+    search: Optional[str] = Query(None, description="Search by patient name or email"),
+    sort_by: Optional[str] = Query("created_at", description="Sort field"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: asc or desc"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List invites with filtering, pagination, and sorting
+    """
+    # Check permissions - only clinicians and admins can view invites
+    if current_user.role not in [UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view invites"
+        )
+    
+    invite_service = InviteService(db)
+    user_service = UserService(db)
+    
+    # Build filter parameters
+    filters = {}
+    if status and status in [s.value for s in InviteStatus]:
+        filters["status"] = status
+    
+    # Apply role-based access control for account filtering
+    if current_user.role == UserRole.SUPER_ADMIN:
+        # Super admins can see all invites across all accounts
+        if clinician_id:
+            filters["clinician_id"] = clinician_id
+    else:
+        # Regular admins and clinicians can only see invites from their account
+        if not current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not associated with any organization"
+            )
+        
+        # Add account filtering for non-super admins
+        filters["account_id"] = current_user.account_id
+        
+        # If user is clinician, only show their invites
+        if current_user.role == UserRole.CLINICIAN:
+            filters["clinician_id"] = current_user.id
+        elif clinician_id:
+            filters["clinician_id"] = clinician_id
+    
+    if search:
+        filters["search"] = search
+    
+    # Get paginated invites
+    invites, total_count = invite_service.list_invites_paginated(
+        page=page,
+        limit=limit,
+        filters=filters,
+        sort_by=sort_by,
+        sort_order=sort_order
     )
+    
+    # Convert to response format
+    invite_responses = []
+    for invite in invites:
+        # Generate invite URL
+        invite_url = invite_service.generate_invite_url(invite)
+        
+        # Get provider name
+        if invite.clinician_id:
+            provider = user_service.get_user_by_id(invite.clinician_id)
+            provider_name = provider.name if provider else "Unknown Provider"
+        else:
+            provider_name = "No Provider Assigned"
+        
+        invite_responses.append(PatientInviteResponse(
+            invite_id=str(invite.id),
+            email=invite.email,
+            first_name=invite.patient.first_name if invite.patient else "",
+            last_name=invite.patient.last_name if invite.patient else "",
+            phone=invite.patient.phone if invite.patient else None,
+            invite_url=invite_url,
+            provider_id=invite.clinician_id or "",  # Use empty string if None
+            provider_name=provider_name,
+            status=InviteStatus(invite.status),
+            created_at=invite.created_at,
+            expires_at=invite.expires_at,
+            accepted_at=invite.accepted_at
+        ))
+    
+    # Calculate pagination metadata
+    total_pages = (total_count + limit - 1) // limit
+    has_next = page < total_pages
+    has_prev = page > 1
+    
+    return InviteListResponse(
+        invites=invite_responses,
+        total_count=total_count,
+        page=page,
+        limit=limit,
+        total_pages=total_pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+@router.get("/invites/{invite_id}", response_model=PatientInviteResponse)
+async def get_invite_details(
+    invite_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get specific invite details
+    """
+    invite_service = InviteService(db)
+    user_service = UserService(db)
+    
+    # Get the invite
+    invite = invite_service.get_invite_by_id(invite_id)
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
+    
+    # Check role-based permissions
+    if current_user.role == UserRole.SUPER_ADMIN:
+        # Super admins can view all invites
+        pass
+    elif current_user.role == UserRole.ADMIN:
+        # Regular admins can only view invites from their account
+        if not current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not associated with any organization"
+            )
+        
+        # Verify the invite's patient belongs to the admin's account
+        if invite.patient and invite.patient.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this invite"
+            )
+    elif current_user.role == UserRole.CLINICIAN:
+        # Clinicians can only view their own invites within their account
+        if invite.clinician_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this invite"
+            )
+        
+        # Additional account verification for clinicians
+        if not current_user.account_id or (invite.patient and invite.patient.account_id != current_user.account_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this invite"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view invites"
+        )
+    
+    # Generate invite URL
+    invite_url = invite_service.generate_invite_url(invite)
+    
+    # Get provider name
+    provider = user_service.get_user_by_id(invite.clinician_id)
+    provider_name = provider.name if provider else "Unknown Provider"
+    
+    return PatientInviteResponse(
+        invite_id=str(invite.id),
+        email=invite.email,
+        first_name=invite.patient.first_name if invite.patient else "",
+        last_name=invite.patient.last_name if invite.patient else "",
+        phone=invite.patient.phone if invite.patient else None,
+        invite_url=invite_url,
+        provider_id=invite.clinician_id,
+        provider_name=provider_name,
+        status=InviteStatus(invite.status),
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+        accepted_at=invite.accepted_at
+    )
+
+@router.post("/invites/{invite_id}/resend", response_model=PatientInviteResponse)
+async def resend_specific_invite(
+    invite_id: str,
+    custom_message: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Resend a specific invite
+    """
+    # Only clinicians and admins can resend invites
+    if current_user.role not in [UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to resend invites"
+        )
+    
+    invite_service = InviteService(db)
+    user_service = UserService(db)
+    
+    # Get the invite first to check permissions
+    invite = invite_service.get_invite_by_id(invite_id)
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
+    
+    # Check permissions
+    if current_user.role == UserRole.CLINICIAN:
+        # Clinicians can only resend their own invites
+        if invite.clinician_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to resend this invite"
+            )
+    elif current_user.role == UserRole.ADMIN:
+        # Admins can only resend invites for patients in their account
+        if invite.patient and invite.patient.account_id != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to resend this invite"
+            )
+    # Super admins can resend any invite
+    
+    try:
+        updated_invite = invite_service.resend_invite(invite_id, custom_message)
+        
+        # Generate invite URL
+        invite_url = invite_service.generate_invite_url(updated_invite)
+        
+        # Get provider name
+        provider = user_service.get_user_by_id(updated_invite.clinician_id)
+        provider_name = provider.name if provider else "Unknown Provider"
+        
+        return PatientInviteResponse(
+            invite_id=str(updated_invite.id),
+            email=updated_invite.email,
+            first_name=updated_invite.patient.first_name if updated_invite.patient else "",
+            last_name=updated_invite.patient.last_name if updated_invite.patient else "",
+            phone=updated_invite.patient.phone if updated_invite.patient else None,
+            invite_url=invite_url,
+            provider_id=updated_invite.clinician_id,
+            provider_name=provider_name,
+            status=InviteStatus(updated_invite.status),
+            created_at=updated_invite.created_at,
+            expires_at=updated_invite.expires_at,
+            accepted_at=updated_invite.accepted_at
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to resend invite: {str(e)}"
+        )
+
+@router.get("/clinicians", response_model=List[UserResponse])
+async def list_clinicians(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List available clinicians/providers for invite assignment
+    """
+    # Only clinicians and admins can view clinician list
+    if current_user.role not in [UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view clinicians"
+        )
+    
+    user_service = UserService(db)
+    
+    # Apply role-based access control for clinicians list
+    if current_user.role == UserRole.SUPER_ADMIN:
+        # Super admins can see all active clinicians
+        clinicians = user_service.get_users_by_role([UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+    else:
+        # Regular admins and clinicians can only see clinicians from their account
+        if not current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not associated with any organization"
+            )
+        
+        # Get clinicians from the same account only
+        clinicians = user_service.get_users_by_role_and_account(
+            roles=[UserRole.CLINICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN],
+            account_id=current_user.account_id
+        )
+    
+    # Convert to response format
+    clinician_responses = []
+    for clinician in clinicians:
+        if clinician.is_active:  # Only include active clinicians
+            clinician_responses.append(UserResponse(
+                id=clinician.id,
+                email=clinician.email,
+                name=clinician.name,
+                role=clinician.role,
+                is_active=clinician.is_active,
+                created_at=clinician.created_at
+            ))
+    
+    return clinician_responses

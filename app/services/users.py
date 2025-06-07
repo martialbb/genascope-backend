@@ -126,7 +126,7 @@ class UserService(BaseService):
         
         # Hash the password
         if "password" in user_dict:
-            user_dict["hashed_password"] = self.get_password_hash(user_dict.pop("password"))
+            user_dict["password_hash"] = self.get_password_hash(user_dict.pop("password"))
             
         # Remove confirm_password field as it's not in the database model
         if "confirm_password" in user_dict:
@@ -168,7 +168,7 @@ class UserService(BaseService):
             
         # Handle password updates
         if "password" in user_dict:
-            user_dict["hashed_password"] = self.get_password_hash(user_dict.pop("password"))
+            user_dict["password_hash"] = self.get_password_hash(user_dict.pop("password"))
         
         # Ensure role is properly handled if it exists
         if "role" in user_dict and user_dict["role"] is not None:
@@ -193,7 +193,11 @@ class UserService(BaseService):
         
         # Validate the update was successful
         if updated_user:
-            print(f"DEBUG Service: After update - name: {updated_user.name}, role: {updated_user.role}")
+            # Handle both real User objects and mock objects in tests
+            if hasattr(updated_user, 'name') and hasattr(updated_user, 'role'):
+                print(f"DEBUG Service: After update - name: {updated_user.name}, role: {updated_user.role}")
+            else:
+                print(f"DEBUG Service: After update - user object: {updated_user}")
         else:
             print(f"DEBUG Service: Update failed for user {user_id}")
             
@@ -317,6 +321,14 @@ class UserService(BaseService):
     def get_by_email(self, email: str) -> Optional[User]:
         """Get a user by email (for test compatibility)"""
         return self.user_repository.get_by_email(email)
+
+    def get_users_by_role(self, roles: List[UserRole]) -> List[User]:
+        """Get users by their roles"""
+        return self.user_repository.get_users_by_role(roles)
+
+    def get_users_by_role_and_account(self, roles: List[UserRole], account_id: str) -> List[User]:
+        """Get users by their roles and account ID"""
+        return self.user_repository.get_users_by_role_and_account(roles, account_id)
 
     # Expose verify_password as a staticmethod for patching in tests
     @staticmethod

@@ -26,9 +26,10 @@ class PatientInviteBase(BaseModel):
     phone: Optional[str] = None
 
 
-class PatientInviteCreate(PatientInviteBase):
+class PatientInviteCreate(BaseModel):
     """Schema for patient invitation creation"""
     provider_id: str
+    patient_id: str  # Link to pre-created patient
     send_email: bool = True
     custom_message: Optional[str] = None
     expiry_days: int = 14
@@ -48,9 +49,17 @@ class PatientInviteResponse(PatientInviteBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PatientInviteForBulk(BaseModel):
+    """Schema for patient data in bulk invitation requests"""
+    patient_id: str
+    provider_id: Optional[str] = None
+    custom_message: Optional[str] = None
+    expiry_days: int = 14
+
+
 class BulkInviteCreate(BaseModel):
     """Schema for creating multiple invitations at once"""
-    patients: List[PatientInviteCreate]
+    patients: List[PatientInviteForBulk]
     send_emails: bool = True
     custom_message: Optional[str] = None
 
@@ -104,3 +113,25 @@ class PatientRegistration(BaseModel):
         if not v:
             raise ValueError('must agree to terms and conditions')
         return v
+
+
+class InviteListParams(BaseModel):
+    """Schema for invite list filtering parameters"""
+    page: int = Field(default=1, ge=1)
+    limit: int = Field(default=10, ge=1, le=100)
+    status: Optional[InviteStatus] = None
+    clinician_id: Optional[str] = None
+    search: Optional[str] = None
+    sort_by: str = Field(default="created_at")
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+class InviteListResponse(BaseModel):
+    """Schema for paginated invite list response"""
+    invites: List["PatientInviteResponse"]
+    total_count: int
+    page: int
+    limit: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool

@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     LAB_API_KEY: str
     LAB_API_URL: str
     
+    # Frontend URL (for invite links, etc.)
+    FRONTEND_URL: str = "http://localhost:4321"
+    
+    # Email configuration
+    SMTP_SERVER: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    FROM_EMAIL: str = "noreply@cancer-genix.com"
+    EMAIL_ENABLED: bool = False
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
