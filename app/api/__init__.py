@@ -10,6 +10,7 @@ from .labs import router as labs_router
 from .appointments import router as appointments_router
 from .users import router as users_router
 from .patients import router as patients_router
+from .v1.chat_configuration_sync import router as chat_configuration_router
 
 api_router = APIRouter()
 api_router.include_router(chat_router)
@@ -23,3 +24,4 @@ api_router.include_router(labs_router)
 api_router.include_router(appointments_router)
 api_router.include_router(users_router)
 api_router.include_router(patients_router)
+api_router.include_router(chat_configuration_router)

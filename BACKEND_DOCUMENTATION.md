@@ -2,9 +2,19 @@
 
 ## Overview
 
-The Genascope backend is a FastAPI-based application that provides RESTful API endpoints to support the Genascope frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, and lab integrations. This documentation reflects the current state as of June 2025, including recent bug fixes and improvements for user management, invite system reliability, and enhanced authentication robustness.
+The Genascope backend is a FastAPI-based application that provides RESTful API endpoints to support the Genascope frontend. It handles authentication, patient data management, chat sessions, eligibility analysis, account management, lab integrations, and secure file storage via AWS S3. The backend implements least-privilege security patterns using IAM roles and temporary credentials for all AWS service access.
 
-## Recent Improvements (June 2025)
+## Recent Improvements (December 2024)
+
+### Security & Infrastructure Enhancements
+- **AWS S3 Integration**: Implemented secure file storage with IAM role-based access
+- **IAM Role Assumption**: Backend uses STS to assume IAM roles for temporary AWS credentials
+- **TLS Enforcement**: All S3 communications encrypted in transit with bucket policy enforcement
+- **Least Privilege Access**: Granular IAM policies for S3, CloudWatch, SES, and Secrets Manager
+- **Regional STS Endpoint**: Configured regional STS endpoint for improved reliability
+- **Environment Standardization**: Consolidated environment variable management
+
+### Previous Improvements (June 2025)
 
 ### User Management Enhancements
 - **Account ID Resolution**: Fixed account_id mismatch issues that caused 403 Forbidden errors during user operations
@@ -356,6 +366,48 @@ Creates a new user within an account (requires admin role). The user is created 
 ```
 
 > **Note:** All user CRUD and authentication operations are routed through the `UserRepository` and not direct database calls.
+
+### File Upload & Storage
+
+#### POST `/api/upload`
+
+Uploads a file to S3 with secure authentication and IAM role-based access.
+
+**Authentication Required**: JWT Bearer token
+
+**Request Format**: Multipart form data
+```
+Content-Type: multipart/form-data
+
+file: [binary file data]
+```
+
+**Example with curl**:
+```bash
+curl -X POST "http://localhost:8000/api/upload" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -F "file=@document.pdf"
+```
+
+**Response**:
+```json
+{
+  "message": "File uploaded successfully",
+  "s3_url": "s3://genascope-dev-knowledge-sources/uploads/user-123/document.pdf",
+  "file_key": "uploads/user-123/document.pdf"
+}
+```
+
+**Security Features**:
+- Uses temporary AWS credentials via IAM role assumption
+- All uploads encrypted in transit (TLS) and at rest (AES-256)
+- Files organized by user ID for access control
+- Comprehensive error handling and logging
+
+**Error Responses**:
+- `401 Unauthorized`: Invalid or missing JWT token
+- `413 Payload Too Large`: File exceeds size limit
+- `500 Internal Server Error`: S3 upload failure or AWS access issues
 
 ### Patient Management
 
@@ -719,196 +771,229 @@ class RecurringAvailability(Base):
                        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
 ```
 
-## Environment Setup
+## Storage & File Management
+
+### AWS S3 Integration
+
+The backend implements secure file storage using AWS S3 with the following security features:
+
+#### IAM Role-Based Access
+- **Service Role**: Backend assumes `genascope-dev-backend-role` IAM role for AWS access
+- **Temporary Credentials**: Uses AWS STS to obtain short-lived credentials instead of long-term access keys
+- **Regional STS**: Configured to use regional STS endpoint (`sts.us-west-2.amazonaws.com`) for reliability
+- **Credential Refresh**: Automatically refreshes temporary credentials before expiration
+
+#### Security Policies
+- **Least Privilege**: IAM policies grant minimum required permissions for each AWS service
+- **TLS Enforcement**: S3 bucket policy denies all non-HTTPS requests
+- **Access Control**: Role-based access ensures only authenticated backend services can access S3
+- **Audit Trail**: All operations logged to CloudWatch for compliance and monitoring
+
+#### Storage Service Implementation
+
+**Location**: `app/services/storage.py`
+
+```python
+class StorageService:
+    def __init__(self):
+        self.s3_client = self._create_s3_client()
+        self.bucket_name = settings.S3_BUCKET_NAME
+    
+    def _create_s3_client(self):
+        """Create S3 client with role assumption for security"""
+        if settings.BACKEND_ROLE_NAME:
+            # Use IAM role assumption for production
+            return self._assume_role_and_create_client()
+        else:
+            # Fallback to access keys for development
+            return boto3.client('s3', region_name=settings.AWS_DEFAULT_REGION)
+    
+    async def upload_file(self, file_content: bytes, file_name: str) -> str:
+        """Upload file to S3 with TLS encryption"""
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=file_name,
+                Body=file_content,
+                ServerSideEncryption='AES256'
+            )
+            return f"s3://{self.bucket_name}/{file_name}"
+        except Exception as e:
+            logger.error(f"Failed to upload file to S3: {e}")
+            raise
+```
+
+#### File Upload Endpoint
+
+**Location**: `app/api/upload.py`
+
+```python
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    storage_service: StorageService = Depends(get_storage_service)
+):
+    """Upload file to S3 with authentication and role-based access"""
+    try:
+        file_content = await file.read()
+        file_key = f"uploads/{current_user.id}/{file.filename}"
+        
+        s3_url = await storage_service.upload_file(file_content, file_key)
+        
+        return {
+            "message": "File uploaded successfully",
+            "s3_url": s3_url,
+            "file_key": file_key
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+```
+
+#### Environment Configuration
+
+**Required Environment Variables**:
+```bash
+# AWS Configuration
+AWS_DEFAULT_REGION=us-west-2
+AWS_ACCESS_KEY_ID=<initial-credentials>  # For role assumption
+AWS_SECRET_ACCESS_KEY=<initial-credentials>  # For role assumption
+
+# S3 Configuration
+S3_BUCKET_NAME=genascope-dev-knowledge-sources
+
+# IAM Role Configuration
+BACKEND_ROLE_NAME=genascope-dev-backend-role
+```
+
+### Environment Setup
 
 ### Environment Variables
 
-Create a `.env` file based on the `.env.example` template:
+Create a `.env.local` file based on the `.env.example` template with the following configuration:
 
+#### Database Configuration
+```bash
+DATABASE_URL=postgresql://user:password@localhost:5432/genascope_db
+# Alternative for MySQL: mysql+pymysql://user:password@db:3306/genascope
 ```
-DATABASE_URL=mysql+pymysql://user:password@db:3306/genascope
+
+#### Authentication Configuration
+```bash
 JWT_SECRET=your_jwt_secret_key
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
 ```
 
+#### AWS Configuration (Required for S3 File Storage)
+```bash
+# AWS Region
+AWS_DEFAULT_REGION=us-west-2
+
+# Initial AWS Credentials (for role assumption)
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+
+# S3 Bucket Configuration
+S3_BUCKET_NAME=genascope-dev-knowledge-sources
+
+# IAM Role for Backend Service
+BACKEND_ROLE_NAME=genascope-dev-backend-role
+```
+
+#### Email Configuration (Optional)
+```bash
+# SMTP Configuration for email services
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASSWORD=
+FROM_EMAIL=noreply@genascope.local
+```
+
+### AWS Infrastructure Prerequisites
+
+Before running the backend, ensure AWS infrastructure is provisioned:
+
+```bash
+# Navigate to infrastructure directory
+cd ../iac/environments/dev
+
+# Initialize Terraform/OpenTofu
+tofu init
+
+# Plan and apply infrastructure
+tofu plan
+tofu apply
+
+# Get outputs (S3 bucket name, IAM role ARN)
+tofu output
+```
+
 ### Running Locally
 
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run the application: `uvicorn app.main:app --reload`
+#### Development Setup
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On macOS/Linux
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run database migrations
+alembic upgrade head
+
+# Start development server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Verify AWS Integration
+```bash
+# Test S3 access and role assumption
+python scripts/test_s3_access.py
+
+# Test file upload functionality
+python scripts/upload_test_file.py
+```
 
 ### Docker Setup
 
-For Docker-based development:
+For Docker-based development with full AWS integration:
 
-1. Build the image: `docker build -t cancer-genix-backend .`
-2. Start containers: `docker-compose up`
-
-## Development Guidelines
-
-1. Use Pydantic models for request/response validation
-2. Follow REST principles when designing endpoints
-3. Implement proper error handling with appropriate HTTP status codes
-4. Document all endpoints with docstrings
-5. Write unit tests for all endpoints
-
-## Integration with Frontend
-
-The backend is designed to work seamlessly with the Genascope frontend. The API endpoints match the frontend's expected request and response formats.
-
-## Testing Framework
-
-The Genascope backend uses pytest for testing. Tests are organized into three categories:
-
-### Test Categories
-
-1. **Unit Tests** - Tests individual functions and API endpoints in isolation with mocked dependencies
-2. **Integration Tests** - Tests API endpoints with database integration using mock database sessions
-3. **End-to-End Tests** - Tests complete workflows across multiple API endpoints with authentication
-
-### Running Tests
-
-Run all tests:
 ```bash
-python -m pytest
+# Start development environment with PostgreSQL
+docker-compose -f ../docker-compose.postgresql.dev.yml up --build
+
+# View backend logs
+docker-compose -f ../docker-compose.postgresql.dev.yml logs -f backend
+
+# Test inside container
+docker exec -it genascope-frontend-backend-1 python scripts/test_s3_access.py
 ```
 
-Run tests by category using markers:
+#### Testing File Upload
+
+**Test Scripts Location**: `backend/scripts/`
+
 ```bash
-# Unit tests only
-python -m pytest -m "not integration and not e2e"
+# Test S3 access and role assumption
+python scripts/test_s3_access.py
 
-# Integration tests
-python -m pytest -m integration
+# Test file upload with authentication
+python scripts/upload_test_file.py
 
-# End-to-End tests
-python -m pytest -m e2e
+# Test upload via API endpoint
+curl -X POST "http://localhost:8000/api/upload" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -F "file=@test-file.txt"
 ```
 
-Run specific test file:
-```bash
-python -m pytest app/tests/api/test_appointments.py
-```
+### File Storage Security Features
 
-Run a specific test function:
-```bash
-python -m pytest app/tests/api/test_appointments.py::TestAppointmentsAPI::test_book_appointment
-```
-
-### Test Configuration
-
-The `pytest.ini` file contains custom test markers and configuration:
-
-```ini
-[pytest]
-markers =
-    unit: marks a test as a unit test (default if no marker)
-    integration: marks a test as an integration test
-    e2e: marks a test as an end-to-end test
-testpaths = app/tests
-```
-
-### Mock Database Implementation
-
-For testing, the application uses a mock database implementation that simulates database operations:
-
-```python
-class MockDBSession:
-    def __init__(self):
-        self.committed = False
-        self.rolled_back = False
-        self.closed = False
-        self._query_results = {}
-        self._added_objects = []
-    
-    def commit(self):
-        self.committed = True
-    
-    def rollback(self):
-        self.rolled_back = True
-    
-    def close(self):
-        self.closed = True
-    
-    def add(self, obj):
-        self._added_objects.append(obj)
-    
-    def query(self, model_cls):
-        return MockQuery(self, model_cls)
-    
-    def set_query_result(self, model_cls, results):
-        self._query_results[model_cls.__name__] = results
-```
-
-### Test Example: Appointment Booking Integration Test
-
-```python
-@pytest.mark.integration
-class TestAppointmentsAPIIntegration:
-    @patch('app.api.appointments.get_db')
-    def test_book_appointment_integration(self, mock_get_db, mock_db):
-        # Configure the mock to yield our mock_db when called
-        mock_get_db.return_value.__iter__.return_value = iter([mock_db])
-        
-        # Set up test data
-        today = date.today().isoformat()
-        appointment_data = {
-            "clinician_id": "clinician-123",
-            "date": today,
-            "time": "10:00",
-            "patient_id": "patient-123",
-            "appointment_type": "virtual",
-            "notes": "Test appointment"
-        }
-        
-        # Make request
-        response = client.post("/api/book_appointment", json=appointment_data)
-        
-        # Check response
-        assert response.status_code == 200
-        data = response.json()
-        assert "appointment_id" in data
-        assert data["status"] == "scheduled"
-        
-        # Verify database operations were committed
-        assert mock_db.committed
-```
-
-### End-to-End Test Example
-
-```python
-@pytest.mark.e2e
-class TestAppointmentsE2E:
-    def test_appointment_scheduling_workflow(self):
-        # 1. Get authorization token for clinician
-        clinician_token = get_auth_token(role="clinician")
-        clinician_headers = auth_headers(clinician_token)
-        
-        # 2. Clinician sets availability
-        tomorrow = (date.today() + timedelta(days=1)).isoformat()
-        availability_data = {
-            "date": tomorrow,
-            "time_slots": ["09:00", "09:30", "10:00", "10:30"],
-            "recurring": False
-        }
-        
-        set_avail_response = client.post(
-            "/api/availability/set?clinician_id=clinician_123",
-            headers=clinician_headers,
-            json=availability_data
-        )
-        
-        assert set_avail_response.status_code == 200
-        
-        # 3-9. Continue with booking, viewing and canceling appointments
-        # (Full workflow test)
-```
-
-### Test Coverage Summary
-
-The current test suite provides comprehensive coverage of the appointments API with:
-- Unit tests: 10 passing tests
-- Integration tests: 5 passing tests
-- End-to-End tests: 3 passing tests
-
-Each test type ensures the API functions correctly at different levels of abstraction, from individual endpoint behavior to complete user workflows.
+1. **Encryption in Transit**: All S3 communications use TLS 1.2+
+2. **Encryption at Rest**: Files encrypted with AES-256 server-side encryption
+3. **Access Control**: IAM policies restrict access to authorized roles only
+4. **Audit Logging**: All file operations logged to CloudWatch
+5. **Temporary Credentials**: No long-term AWS credentials stored in production
+6. **Regional Isolation**: Resources isolated to specific AWS regions

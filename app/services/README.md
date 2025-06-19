@@ -41,6 +41,34 @@ The service layer is responsible for:
 - **AppointmentService**: Handles appointment scheduling, availability management
 - **UserService**: Manages user data and operations
 - **LabService**: Interfaces with external lab systems for test ordering and results
+- **StorageService**: Manages secure file storage to AWS S3 with IAM role-based access
+
+### StorageService
+
+The `StorageService` provides secure file storage capabilities:
+
+**Features**:
+- IAM role assumption for AWS access (no long-term credentials)
+- TLS encryption for all S3 communications
+- Automatic credential refresh for temporary tokens
+- Regional STS endpoint configuration for reliability
+
+**Usage**:
+```python
+# In an API endpoint
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    storage_service: StorageService = Depends(get_storage_service)
+):
+    file_content = await file.read()
+    file_key = f"uploads/{current_user.id}/{file.filename}"
+    
+    s3_url = await storage_service.upload_file(file_content, file_key)
+    
+    return {"s3_url": s3_url, "file_key": file_key}
+```
 
 ## Base Classes
 

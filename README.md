@@ -1,14 +1,45 @@
 # Genascope Backend
 
-This is the backend repository for the Genascope application, built with FastAPI and Python.
+This is the backend repository for the Genascope application, built with FastAPI and Python. The backend provides secure API endpoints with AWS S3 integration for file storage using IAM role-based access and least-privilege security patterns.
 
 ## 🔄 Related Repositories
 
 This project is part of a multi-repository architecture:
-- Backend (this repo): API server for the Genascope application
-- Frontend: [cancer-genix-frontend](https://github.com/martialbb/cancer-genix-frontend) - Astro/React UI
+- Backend (this repo): API server for the Genascope application with AWS integration
+- Frontend: [genascope-frontend](https://github.com/martialbb/genascope-frontend) - Astro/React UI
+
+## 🛡️ Security Features
+
+- **AWS S3 Integration**: Secure file storage with IAM role-based access
+- **Temporary Credentials**: Uses AWS STS for short-lived credentials (no long-term keys)
+- **TLS Enforcement**: All S3 communications encrypted in transit
+- **Least Privilege**: Granular IAM policies for minimum required permissions
+- **Role Assumption**: Backend assumes IAM roles for AWS service access
 
 ## 🚀 Project Setup
+
+### Prerequisites
+
+1. **AWS Infrastructure**: Provision AWS resources using Infrastructure as Code:
+```sh
+# Navigate to infrastructure directory
+cd ../iac/environments/dev
+
+# Initialize and apply Terraform/OpenTofu
+tofu init
+tofu plan
+tofu apply
+```
+
+2. **Environment Configuration**: Create `.env.local` with AWS and database settings:
+```sh
+# Copy example environment file
+cp .env.example .env.local
+
+# Update with your AWS credentials and S3 bucket name from infrastructure outputs
+```
+
+### Development Setup
 
 ```sh
 # Create virtual environment
@@ -24,6 +55,9 @@ pip install -r requirements.txt
 
 # Run database migrations
 alembic upgrade head
+
+# Test AWS integration
+python scripts/test_s3_access.py
 ```
 
 ## 🧞 Commands
@@ -60,15 +94,45 @@ The backend implements the following key features:
 
 - **Authentication**: JWT token-based authentication system
 - **User Management**: Complete CRUD operations for different user roles
+- **File Storage**: Secure S3 integration with IAM role-based access
 - **Chat System**: Interactive chat with branching logic and persistence
 - **Patient Eligibility Analysis**: Risk assessment based on chat answers
 - **Patient Invites**: System for clinicians to invite patients
 - **Lab Integration**: Orders and results management with external labs
 - **Appointments**: Scheduling system for patient appointments
 
+## 🔐 AWS Integration
+
+### File Upload Security
+- **IAM Role Assumption**: Backend assumes `genascope-dev-backend-role` for AWS access
+- **Temporary Credentials**: Uses AWS STS for short-lived credentials
+- **TLS Encryption**: All S3 communications over HTTPS
+- **Regional STS**: Uses regional STS endpoint for improved reliability
+
+### Testing AWS Integration
+```sh
+# Test S3 access and role assumption
+python scripts/test_s3_access.py
+
+# Test file upload with authentication
+python scripts/upload_test_file.py
+
+# Test via API endpoint
+curl -X POST "http://localhost:8000/api/upload" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -F "file=@test-file.txt"
+```
+
 ## 🔌 Frontend Connection
 
-This backend is designed to work with the [cancer-genix-frontend](https://github.com/martialbb/cancer-genix-frontend) repository.
+This backend is designed to work with the [genascope-frontend](https://github.com/martialbb/genascope-frontend) repository.
+
+The backend provides secure API endpoints for:
+- User authentication and management
+- File upload to S3 with role-based access
+- Chat interactions and eligibility analysis
+- Patient invite management
+- Lab test ordering and results
 
 Make sure to configure CORS in `app/main.py` to allow requests from your frontend application.
 

@@ -1,6 +1,7 @@
 """Chat database models."""
 from sqlalchemy import Column, String, Integer, ForeignKey, Text, DateTime, JSON, Boolean
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from app.db.database import Base
 import uuid
 from datetime import datetime
@@ -18,6 +19,12 @@ class ChatSession(Base):
     session_type = Column(String, nullable=False)  # assessment, follow-up, etc.
     status = Column(String, nullable=False, default="active")  # active, completed, archived
     session_metadata = Column(JSON, nullable=True)  # Additional metadata about the session
+    
+    # New chat configuration fields
+    strategy_id = Column(String, ForeignKey("chat_strategies.id"), nullable=True)
+    strategy_execution_id = Column(String, ForeignKey("strategy_executions.id"), nullable=True)
+    triggered_by_rules = Column(JSONB, nullable=True)  # Rules that triggered this session
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
@@ -27,6 +34,10 @@ class ChatSession(Base):
     patient = relationship("User", foreign_keys=[patient_id], backref="chat_sessions")
     clinician = relationship("User", foreign_keys=[clinician_id], backref="managed_chat_sessions")
     answers = relationship("ChatAnswer", back_populates="session", cascade="all, delete-orphan")
+    
+    # New chat configuration relationships
+    strategy = relationship("ChatStrategy", back_populates="chat_sessions")
+    strategy_execution = relationship("StrategyExecution", foreign_keys=[strategy_execution_id], back_populates="session", uselist=False)
 
 
 class ChatQuestion(Base):
@@ -42,11 +53,22 @@ class ChatQuestion(Base):
     required = Column(Boolean, default=True)
     category = Column(String, nullable=True)  # For grouping related questions
     next_question_logic = Column(JSON, nullable=True)  # Logic for determining next question
+    
+    # New chat configuration fields
+    strategy_id = Column(String, ForeignKey("chat_strategies.id"), nullable=True)
+    knowledge_source_id = Column(String, ForeignKey("knowledge_sources.id"), nullable=True)
+    is_dynamic = Column(Boolean, nullable=False, default=False)  # AI-generated vs. predefined
+    context = Column(JSONB, nullable=True)  # Additional context for AI generation
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     answers = relationship("ChatAnswer", back_populates="question")
+    
+    # New chat configuration relationships
+    strategy = relationship("ChatStrategy", back_populates="chat_questions")
+    knowledge_source = relationship("KnowledgeSource", back_populates="chat_questions")
 
 
 class ChatAnswer(Base):
