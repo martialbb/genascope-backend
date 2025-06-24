@@ -32,6 +32,7 @@ from app.schemas.chat_configuration import (
     ProcessingStatus,
     StorageType as StorageTypeEnum,
     AccessLevel,
+    ExecutionStatus,
 )
 from app.models.chat_configuration import ChatStrategy, KnowledgeSource
 
@@ -59,7 +60,73 @@ class ChatStrategyService:
             
             strategy = self.repository.create_strategy(strategy_data, creator_id, account_id)
             
-            # Manually construct response to avoid relationship issues
+            # Reload the strategy with full details to get the relationships
+            strategy_with_details = self.repository.get_with_full_details(str(strategy.id))
+            if not strategy_with_details:
+                raise HTTPException(status_code=500, detail="Failed to retrieve created strategy")
+            
+            # Load targeting rules from database
+            targeting_rules = []
+            for rule in strategy_with_details.targeting_rules:
+                targeting_rules.append({
+                    "id": str(rule.id),
+                    "strategy_id": str(rule.strategy_id),
+                    "field": rule.field,
+                    "operator": rule.operator,
+                    "value": rule.value,
+                    "sequence": rule.sequence,
+                    "created_at": rule.created_at
+                })
+            
+            # Load outcome actions from database
+            outcome_actions = []
+            for action in strategy_with_details.outcome_actions:
+                outcome_actions.append({
+                    "id": str(action.id),
+                    "strategy_id": str(action.strategy_id),
+                    "condition": action.condition,
+                    "action_type": action.action_type,
+                    "details": action.details,
+                    "sequence": action.sequence,
+                    "created_at": action.created_at
+                })
+            
+            # Load knowledge sources from database
+            knowledge_sources = []
+            for ks in strategy_with_details.knowledge_sources:
+                # Create a comprehensive knowledge source response
+                ks_response = {
+                    "id": str(ks.id),
+                    "name": ks.name,
+                    "source_type": ks.source_type,
+                    "description": ks.description or "",
+                    "content_type": ks.content_type,
+                    "access_level": ks.access_level or "account",
+                    "file_name": getattr(ks, 'file_path', None),
+                    "file_extension": None,
+                    "file_size_bytes": getattr(ks, 'file_size', None),
+                    "file_checksum": None,
+                    "storage_type": "database",
+                    "storage_provider": None,
+                    "processing_status": ks.processing_status or "completed",
+                    "processing_error": getattr(ks, 'processing_error', None),
+                    "processing_attempts": 0,
+                    "content_extracted_at": getattr(ks, 'processed_at', None),
+                    "content_summary": getattr(ks, 'content_summary', None),
+                    "keywords": [],
+                    "ai_insights": None,
+                    "upload_date": ks.created_at,
+                    "uploaded_by": str(ks.created_by),
+                    "account_id": str(ks.account_id),
+                    "is_active": getattr(ks, 'is_active', True),
+                    "is_public": False,
+                    "last_accessed_at": None,
+                    "archived_at": None,
+                    "created_at": ks.created_at,
+                    "updated_at": ks.updated_at
+                }
+                knowledge_sources.append(ks_response)
+            
             return ChatStrategyResponse(
                 id=str(strategy.id),
                 name=strategy.name,
@@ -73,9 +140,9 @@ class ChatStrategyService:
                 version=strategy.version,
                 created_at=strategy.created_at,
                 updated_at=strategy.updated_at,
-                knowledge_sources=[],
-                targeting_rules=[],
-                outcome_actions=[]
+                knowledge_sources=knowledge_sources,
+                targeting_rules=targeting_rules,
+                outcome_actions=outcome_actions
             )
         except IntegrityError:
             raise HTTPException(
@@ -88,27 +155,88 @@ class ChatStrategyService:
     
     def get_strategy(self, strategy_id: str, account_id: int) -> ChatStrategyResponse:
         """Get a strategy by ID."""
-        strategy = self.repository.get_by_id(strategy_id)
+        strategy = self.repository.get_with_full_details(strategy_id)
         if not strategy or strategy.account_id != account_id:
             raise HTTPException(status_code=404, detail="Strategy not found")
         
-        # Convert UUIDs to strings and create response manually to avoid DB errors
+        # Load targeting rules from database
+        targeting_rules = []
+        for rule in strategy.targeting_rules:
+            targeting_rules.append({
+                "id": str(rule.id),
+                "strategy_id": str(rule.strategy_id),
+                "field": rule.field,
+                "operator": rule.operator,
+                "value": rule.value,
+                "sequence": rule.sequence,
+                "created_at": rule.created_at
+            })
+        
+        # Load outcome actions from database
+        outcome_actions = []
+        for action in strategy.outcome_actions:
+            outcome_actions.append({
+                "id": str(action.id),
+                "strategy_id": str(action.strategy_id),
+                "condition": action.condition,
+                "action_type": action.action_type,
+                "details": action.details,
+                "sequence": action.sequence,
+                "created_at": action.created_at
+            })
+        
+        # Load knowledge sources from database
+        knowledge_sources = []
+        for ks in strategy.knowledge_sources:
+            # Create a comprehensive knowledge source response
+            ks_response = {
+                "id": str(ks.id),
+                "name": ks.name,
+                "source_type": ks.source_type,
+                "description": ks.description or "",
+                "content_type": ks.content_type,
+                "access_level": ks.access_level or "account",
+                "file_name": getattr(ks, 'file_path', None),
+                "file_extension": None,
+                "file_size_bytes": getattr(ks, 'file_size', None),
+                "file_checksum": None,
+                "storage_type": "database",
+                "storage_provider": None,
+                "processing_status": ks.processing_status or "completed",
+                "processing_error": getattr(ks, 'processing_error', None),
+                "processing_attempts": 0,
+                "content_extracted_at": getattr(ks, 'processed_at', None),
+                "content_summary": getattr(ks, 'content_summary', None),
+                "keywords": [],
+                "ai_insights": None,
+                "upload_date": ks.created_at,
+                "uploaded_by": str(ks.created_by),
+                "account_id": str(ks.account_id),
+                "is_active": getattr(ks, 'is_active', True),
+                "is_public": False,
+                "last_accessed_at": None,
+                "archived_at": None,
+                "created_at": ks.created_at,
+                "updated_at": ks.updated_at
+            }
+            knowledge_sources.append(ks_response)
+        
         return ChatStrategyResponse(
             id=str(strategy.id),
             name=strategy.name,
             description=strategy.description,
             patient_introduction=strategy.patient_introduction,
             specialty=strategy.specialty,
-            goal=strategy.goal,  # Add the goal field
+            goal=strategy.goal,
             is_active=strategy.is_active,
             version=strategy.version,
             created_by=str(strategy.created_by),
             account_id=str(strategy.account_id),
             created_at=strategy.created_at,
             updated_at=strategy.updated_at,
-            knowledge_sources=[],  # Empty for now to avoid DB errors
-            targeting_rules=[],     # Empty for now to avoid DB errors  
-            outcome_actions=[]      # Empty for now to avoid DB errors
+            knowledge_sources=knowledge_sources,
+            targeting_rules=targeting_rules,
+            outcome_actions=outcome_actions
         )
     
     def list_strategies(
@@ -119,13 +247,75 @@ class ChatStrategyService:
         active_only: bool = False
     ) -> List[ChatStrategyResponse]:
         """List strategies for an account."""
-        strategies = self.repository.get_by_account(
+        strategies = self.repository.get_by_account_with_details(
             account_id, skip, limit, active_only
         )
         
-        # Manually construct responses to avoid relationship issues
+        # Construct responses with full relationship data
         result = []
         for strategy in strategies:
+            # Load targeting rules from database
+            targeting_rules = []
+            for rule in strategy.targeting_rules:
+                targeting_rules.append({
+                    "id": str(rule.id),
+                    "strategy_id": str(rule.strategy_id),
+                    "field": rule.field,
+                    "operator": rule.operator,
+                    "value": rule.value,
+                    "sequence": rule.sequence,
+                    "created_at": rule.created_at
+                })
+            
+            # Load outcome actions from database
+            outcome_actions = []
+            for action in strategy.outcome_actions:
+                outcome_actions.append({
+                    "id": str(action.id),
+                    "strategy_id": str(action.strategy_id),
+                    "condition": action.condition,
+                    "action_type": action.action_type,
+                    "details": action.details,
+                    "sequence": action.sequence,
+                    "created_at": action.created_at
+                })
+            
+            # Load knowledge sources from database
+            knowledge_sources = []
+            for ks in strategy.knowledge_sources:
+                # Create a comprehensive knowledge source response
+                ks_response = {
+                    "id": str(ks.id),
+                    "name": ks.name,
+                    "source_type": ks.source_type,
+                    "description": ks.description or "",
+                    "content_type": ks.content_type,
+                    "access_level": ks.access_level or "account",
+                    "file_name": getattr(ks, 'file_path', None),
+                    "file_extension": None,
+                    "file_size_bytes": getattr(ks, 'file_size', None),
+                    "file_checksum": None,
+                    "storage_type": "database",
+                    "storage_provider": None,
+                    "processing_status": ks.processing_status or "completed",
+                    "processing_error": getattr(ks, 'processing_error', None),
+                    "processing_attempts": 0,
+                    "content_extracted_at": getattr(ks, 'processed_at', None),
+                    "content_summary": getattr(ks, 'content_summary', None),
+                    "keywords": [],
+                    "ai_insights": None,
+                    "upload_date": ks.created_at,
+                    "uploaded_by": str(ks.created_by),
+                    "account_id": str(ks.account_id),
+                    "is_active": getattr(ks, 'is_active', True),
+                    "is_public": False,
+                    "last_accessed_at": None,
+                    "archived_at": None,
+                    "created_at": ks.created_at,
+                    "updated_at": ks.updated_at
+                }
+                knowledge_sources.append(ks_response)
+            
             response = ChatStrategyResponse(
                 id=str(strategy.id),
                 name=strategy.name,
@@ -139,9 +329,9 @@ class ChatStrategyService:
                 version=strategy.version,
                 created_at=strategy.created_at,
                 updated_at=strategy.updated_at,
-                knowledge_sources=[],
-                targeting_rules=[],
-                outcome_actions=[]
+                knowledge_sources=knowledge_sources,
+                targeting_rules=targeting_rules,
+                outcome_actions=outcome_actions
             )
             result.append(response)
         
@@ -433,7 +623,8 @@ class KnowledgeSourceService:
     def direct_upload(
         self,
         request: DirectUploadRequest,
-        creator_id: int
+        creator_id: str,
+        account_id: str
     ) -> KnowledgeSourceResponse:
         """Create knowledge source from direct content."""
         try:
@@ -441,19 +632,11 @@ class KnowledgeSourceService:
                 name=request.name,
                 description=request.description,
                 source_type="direct",
-                storage_type=StorageTypeEnum.database,
-                content=request.content,
-                access_level=request.access_level or AccessLevel.private,
-                processing_status=ProcessingStatus.completed,
-                metadata_={
-                    "content_type": request.content_type,
-                    "tags": request.tags or [],
-                    "created_timestamp": datetime.utcnow().isoformat()
-                }
+                content_type=request.content_type
             )
             
-            source = self.repository.create(source_data, creator_id)
-            return KnowledgeSourceResponse.from_orm(source)
+            source = self.repository.create_knowledge_source(source_data, creator_id, account_id)
+            return self._convert_to_response(source)
             
         except Exception as e:
             logger.error(f"Error creating direct upload: {e}")
@@ -474,144 +657,92 @@ class KnowledgeSourceService:
         except ValueError:
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
-        # Use raw SQL to get the knowledge source
-        result = self.db.execute(
-            text("""
-            SELECT id, name, source_type, description, created_at, updated_at,
-                   content_type, file_size, file_path, s3_bucket, s3_key, s3_url,
-                   processing_status, is_active, access_level, created_by, account_id
-            FROM knowledge_sources 
-            WHERE id = :source_id AND account_id = :account_id
-            """),
-            {"source_id": uuid_obj, "account_id": account_id}
-        ).fetchone()
-        
-        if not result:
+        source = self.repository.get_by_id(source_id)
+        if not source:
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
-        # Manually construct response
-        return KnowledgeSourceResponse(
-            id=str(result.id),
-            name=result.name,
-            source_type=result.source_type,
-            description=result.description or "",
-            content_type=result.content_type,
-            access_level=result.access_level,
-            created_at=result.created_at,
-            updated_at=result.updated_at,
-            account_id=str(result.account_id),
-            file_name=None,  # Could be extracted from file_path if needed
-            file_extension=None,  # Could be extracted from file_path if needed
-            file_size_bytes=result.file_size,
-            file_checksum=None,  # Not stored in current schema
-            storage_type=StorageTypeEnum.LOCAL,
-            storage_provider="local",
-            processing_status=ProcessingStatus.PENDING,
-            processing_error=None,
-            processing_attempts=0,
-            content_extracted_at=None,
-            content_summary=None,
-            keywords=[],
-            ai_insights=None,
-            upload_date=result.created_at,
-            uploaded_by=str(result.created_by),
-            is_active=result.is_active,
-            is_public=False,
-            last_accessed_at=None,
-            archived_at=None
-        )
+        # Check account access
+        if str(source.account_id) != str(account_id):
+            raise HTTPException(status_code=404, detail="Knowledge source not found")
+        
+        return self._convert_to_response(source)
     
     def list_knowledge_sources(
         self,
-        account_id: int,
+        account_id: str,
         skip: int = 0,
         limit: int = 100,
         source_type: Optional[str] = None,
         processing_status: Optional[ProcessingStatus] = None
     ) -> List[KnowledgeSourceResponse]:
         """List knowledge sources for an account."""
-        # Use raw SQL to avoid ORM schema mismatch issues
-        from sqlalchemy import text
+        # Use the repository to get knowledge sources
+        sources = self.repository.get_by_account(
+            account_id=account_id,
+            skip=skip,
+            limit=limit,
+            source_type=source_type,
+            include_public=True
+        )
         
-        query = """
-        SELECT id, name, source_type, description, created_at, updated_at,
-               content_type, file_size, file_path, s3_bucket, s3_key, s3_url,
-               processing_status, is_active, access_level, created_by, account_id
-        FROM knowledge_sources 
-        WHERE account_id = :account_id
-        """
-        
-        params = {"account_id": account_id}
-        
-        if source_type:
-            query += " AND source_type = :source_type"
-            params["source_type"] = source_type
-            
-        query += " ORDER BY created_at DESC LIMIT :limit OFFSET :skip"
-        params["limit"] = limit
-        params["skip"] = skip
-        
-        result = self.db.execute(text(query), params).fetchall()
-        
-        # Manually construct responses to match KnowledgeSourceResponse schema
-        sources = []
-        for row in result:
-            response = KnowledgeSourceResponse(
-                id=str(row.id),
-                name=row.name,  # Keep original name field
-                source_type=row.source_type,  # Keep original source_type field
-                description=row.description or "",
-                content_type=row.content_type,
-                access_level=row.access_level,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                account_id=str(row.account_id),  # Required field
-                file_name=None,
-                file_extension=None,
-                file_size_bytes=row.file_size,
-                file_checksum=None,
-                storage_type=StorageTypeEnum.LOCAL,  # Default storage type
-                storage_provider=None,
-                processing_status=ProcessingStatus.COMPLETED if row.processing_status == "completed" else ProcessingStatus.PENDING,
-                processing_error=None,
-                processing_attempts=0,
-                content_extracted_at=None,
-                content_summary=None,
-                keywords=[],
-                ai_insights=None,
-                upload_date=row.created_at,
-                uploaded_by=str(row.created_by),
-                is_active=row.is_active,
-                is_public=False,  # Default since we removed this from model
-                last_accessed_at=None,
-                archived_at=None
-            )
-            sources.append(response)
-            
-        return sources
+        return [self._convert_to_response(source) for source in sources]
     
     def search_knowledge_sources(
         self,
         search_params: KnowledgeSourceSearchRequest,
-        account_id: int
+        account_id: str
     ) -> List[KnowledgeSourceResponse]:
         """Search knowledge sources."""
-        sources = self.repository.search(search_params, account_id)
-        return [KnowledgeSourceResponse.from_orm(s) for s in sources]
+        result = self.repository.search_content(search_params, account_id)
+        sources = result.get("items", []) if isinstance(result, dict) else result
+        return [self._convert_to_response(source) for source in sources]
     
     def update_knowledge_source(
         self,
-        source_id: int,
+        source_id: str,
         update_data: KnowledgeSourceUpdate,
-        account_id: int
+        account_id: str
     ) -> KnowledgeSourceResponse:
         """Update a knowledge source."""
         source = self.repository.get_by_id(source_id)
-        if not source or source.account_id != account_id:
+        if not source or str(source.account_id) != str(account_id):
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
-        updated_source = self.repository.update(source_id, update_data)
-        return KnowledgeSourceResponse.from_orm(updated_source)
+        updated_source = self.repository.update_knowledge_source(source_id, update_data)
+        return self._convert_to_response(updated_source)
+    
+    def _convert_to_response(self, source) -> KnowledgeSourceResponse:
+        """Convert database model to response schema with proper field mapping."""
+        return KnowledgeSourceResponse(
+            id=str(source.id),
+            name=source.name,
+            source_type=source.source_type,
+            description=source.description or "",
+            content_type=source.content_type,
+            access_level=source.access_level,
+            file_name=None,  # Not in current model
+            file_extension=None,  # Not in current model
+            file_size_bytes=source.file_size,
+            file_checksum=None,  # Not in current model
+            storage_type="local",  # Default value since not in model
+            storage_provider=None,  # Not in current model
+            processing_status=source.processing_status or "pending",
+            processing_error=source.processing_error,
+            processing_attempts=0,  # Not in current model
+            content_extracted_at=source.processed_at,
+            content_summary=source.content_summary,
+            keywords=[],  # Not in current model
+            ai_insights=None,  # Not in current model
+            upload_date=source.created_at,
+            uploaded_by=str(source.created_by),
+            account_id=str(source.account_id),
+            is_active=source.is_active,
+            is_public=False,  # Not in current model
+            last_accessed_at=None,  # Not in current model
+            archived_at=None,  # Not in current model
+            created_at=source.created_at,
+            updated_at=source.updated_at
+        )
     
     async def delete_knowledge_source(
         self,
@@ -664,17 +795,22 @@ class KnowledgeSourceService:
     
     def bulk_delete_knowledge_sources(
         self,
-        source_ids: List[int],
-        account_id: int
+        source_ids: List[str],
+        account_id: str
     ) -> int:
         """Bulk delete knowledge sources."""
         # Verify all sources belong to the account
-        for source_id in source_ids:
+        for i, source_id in enumerate(source_ids):
             source = self.repository.get_by_id(source_id)
-            if not source or source.account_id != account_id:
+            if not source:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Knowledge source {source_id} not found"
+                    detail=f"Knowledge source not found: {source_id} (position {i})"
+                )
+            if str(source.account_id) != str(account_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Knowledge source access denied: {source_id} (account mismatch: {source.account_id} != {account_id})"
                 )
         
         return self.repository.bulk_delete(source_ids)
@@ -682,24 +818,24 @@ class KnowledgeSourceService:
     def get_processing_queue(self, account_id: int) -> List[KnowledgeSourceResponse]:
         """Get knowledge sources in processing queue."""
         sources = self.repository.get_processing_queue(account_id)
-        return [KnowledgeSourceResponse.from_orm(s) for s in sources]
+        return [self._convert_to_response(s) for s in sources]
     
-    def retry_processing(self, source_id: int, account_id: int) -> bool:
+    def retry_processing(self, source_id: str, account_id: str) -> bool:
         """Retry processing for a failed knowledge source."""
         source = self.repository.get_by_id(source_id)
-        if not source or source.account_id != account_id:
+        if not source or str(source.account_id) != str(account_id):
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
-        if source.processing_status != ProcessingStatus.failed:
+        if source.processing_status != ProcessingStatus.FAILED.value:
             raise HTTPException(
                 status_code=400,
                 detail="Only failed sources can be retried"
             )
         
-        # Reset status to pending
-        self.repository.update(source_id, KnowledgeSourceUpdate(
-            processing_status=ProcessingStatus.pending
-        ))
+        # Reset status to pending by directly updating the database object
+        source.processing_status = ProcessingStatus.PENDING.value
+        self.db.commit()
+        self.db.refresh(source)
         
         return True
 
@@ -715,98 +851,189 @@ class StrategyAnalyticsService:
     def get_strategy_analytics(
         self,
         strategy_id: str,
-        account_id: int,
+        account_id: str,
         days: int = 30
     ) -> Dict[str, Any]:
         """Get analytics for a strategy."""
         # Verify strategy belongs to account
         strategy_repo = ChatStrategyRepository(self.db)
         strategy = strategy_repo.get_by_id(strategy_id)
-        if not strategy or strategy.account_id != account_id:
+        if not strategy or str(strategy.account_id) != str(account_id):
             raise HTTPException(status_code=404, detail="Strategy not found")
+        
+        # Calculate date range for analytics
+        from datetime import datetime, timedelta
+        from sqlalchemy import text
         
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
         
-        # Get analytics data
-        analytics = self.analytics_repository.get_by_strategy_and_date_range(
-            strategy_id, start_date, end_date
-        )
+        # Query analytics metrics from the database
+        analytics_query = text("""
+            SELECT metric_name, SUM(metric_value) as total_value
+            FROM strategy_analytics 
+            WHERE strategy_id = :strategy_id 
+                AND recorded_at >= :start_date 
+                AND recorded_at <= :end_date
+            GROUP BY metric_name
+        """)
         
-        # Get execution summary
-        executions = self.execution_repository.get_by_strategy_and_date_range(
-            strategy_id, start_date, end_date
-        )
+        analytics_result = self.db.execute(analytics_query, {
+            "strategy_id": strategy_id,
+            "start_date": start_date,
+            "end_date": end_date
+        }).fetchall()
         
-        # Calculate metrics
-        total_executions = len(executions)
-        successful_executions = len([e for e in executions if e.status == "completed"])
-        avg_duration = sum([e.duration_seconds or 0 for e in executions]) / max(total_executions, 1)
+        # Convert analytics results to a dictionary
+        analytics_metrics = {row[0]: row[1] for row in analytics_result}
         
-        outcomes = {}
-        for execution in executions:
-            if execution.outcome:
-                outcomes[execution.outcome] = outcomes.get(execution.outcome, 0) + 1
+        # Query execution data
+        executions_query = text("""
+            SELECT status, started_at, completed_at, results
+            FROM strategy_executions 
+            WHERE strategy_id = :strategy_id 
+                AND started_at >= :start_date 
+                AND started_at <= :end_date
+            ORDER BY started_at DESC
+        """)
+        
+        executions_result = self.db.execute(executions_query, {
+            "strategy_id": strategy_id,
+            "start_date": start_date,
+            "end_date": end_date
+        }).fetchall()
+        
+        # Calculate execution summary
+        total_executions = len(executions_result)
+        successful_executions = len([e for e in executions_result if e[0] == 'completed'])
+        success_rate = (successful_executions / total_executions * 100) if total_executions > 0 else 0.0
+        
+        # Calculate average duration for completed executions
+        total_duration = 0
+        completed_count = 0
+        for execution in executions_result:
+            if execution[0] == 'completed' and execution[1] and execution[2]:
+                duration = (execution[2] - execution[1]).total_seconds()
+                total_duration += duration
+                completed_count += 1
+        
+        average_duration = total_duration / completed_count if completed_count > 0 else 0.0
+        
+        # Prepare execution details
+        executions = []
+        for execution in executions_result[:10]:  # Limit to 10 most recent
+            executions.append({
+                "status": execution[0],
+                "started_at": execution[1].isoformat() if execution[1] else None,
+                "completed_at": execution[2].isoformat() if execution[2] else None,
+                "results": execution[3] if execution[3] else {}
+            })
         
         return {
             "strategy_id": strategy_id,
+            "strategy_name": strategy.name,
             "period": f"{days} days",
             "summary": {
                 "total_executions": total_executions,
                 "successful_executions": successful_executions,
-                "success_rate": successful_executions / max(total_executions, 1),
-                "average_duration_seconds": avg_duration,
-                "outcomes": outcomes
+                "success_rate": round(success_rate, 2),
+                "average_duration_seconds": round(average_duration, 2),
+                "outcomes": {}
             },
-            "analytics": [
-                {
-                    "date": a.date.isoformat(),
-                    "metrics": a.metrics
-                }
-                for a in analytics
-            ],
-            "executions": [
-                {
-                    "id": e.id,
-                    "patient_id": e.patient_id,
-                    "status": e.status,
-                    "outcome": e.outcome,
-                    "duration_seconds": e.duration_seconds,
-                    "created_at": e.created_at.isoformat()
-                }
-                for e in executions
-            ]
+            "analytics": {
+                "patients_screened": int(analytics_metrics.get("patients_screened", 0)),
+                "criteria_met": int(analytics_metrics.get("criteria_met", 0)),
+                "criteria_not_met": int(analytics_metrics.get("criteria_not_met", 0)),
+                "incomplete_data": int(analytics_metrics.get("incomplete_data", 0)),
+                "conversion_rate": round(analytics_metrics.get("conversion_rate", 0.0), 2),
+                "total_tasks_created": int(analytics_metrics.get("tasks_created", 0)),
+                "total_charts_flagged": int(analytics_metrics.get("charts_flagged", 0)),
+                "total_messages_sent": int(analytics_metrics.get("messages_sent", 0)),
+                "total_followups_scheduled": int(analytics_metrics.get("followups_scheduled", 0))
+            },
+            "executions": executions
         }
-    
+        
     def get_account_analytics(
         self,
-        account_id: int,
+        account_id: str,
         days: int = 30
     ) -> Dict[str, Any]:
         """Get analytics for all strategies in an account."""
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days)
+        from datetime import datetime, timedelta
+        from sqlalchemy import text
         
         # Get all strategies for account
         strategy_repo = ChatStrategyRepository(self.db)
         strategies = strategy_repo.get_by_account(account_id)
         
-        account_analytics = {
+        # Calculate date range for analytics
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        strategy_analytics = []
+        for strategy in strategies:
+            # Query analytics metrics for this strategy
+            analytics_query = text("""
+                SELECT metric_name, SUM(metric_value) as total_value
+                FROM strategy_analytics 
+                WHERE strategy_id = :strategy_id 
+                    AND recorded_at >= :start_date 
+                    AND recorded_at <= :end_date
+                GROUP BY metric_name
+            """)
+            
+            analytics_result = self.db.execute(analytics_query, {
+                "strategy_id": str(strategy.id),
+                "start_date": start_date,
+                "end_date": end_date
+            }).fetchall()
+            
+            analytics_metrics = {row[0]: row[1] for row in analytics_result}
+            
+            # Query execution data for this strategy
+            executions_query = text("""
+                SELECT status, started_at, completed_at
+                FROM strategy_executions 
+                WHERE strategy_id = :strategy_id 
+                    AND started_at >= :start_date 
+                    AND started_at <= :end_date
+            """)
+            
+            executions_result = self.db.execute(executions_query, {
+                "strategy_id": str(strategy.id),
+                "start_date": start_date,
+                "end_date": end_date
+            }).fetchall()
+            
+            # Calculate execution summary
+            total_executions = len(executions_result)
+            successful_executions = len([e for e in executions_result if e[0] == 'completed'])
+            success_rate = (successful_executions / total_executions * 100) if total_executions > 0 else 0.0
+            
+            strategy_analytics.append({
+                "strategy_id": str(strategy.id),
+                "strategy_name": strategy.name,
+                "total_executions": total_executions,
+                "successful_executions": successful_executions,
+                "success_rate": round(success_rate, 2),
+                "analytics": {
+                    "patients_screened": int(analytics_metrics.get("patients_screened", 0)),
+                    "criteria_met": int(analytics_metrics.get("criteria_met", 0)),
+                    "criteria_not_met": int(analytics_metrics.get("criteria_not_met", 0)),
+                    "incomplete_data": int(analytics_metrics.get("incomplete_data", 0)),
+                    "conversion_rate": round(analytics_metrics.get("conversion_rate", 0.0), 2),
+                    "total_tasks_created": int(analytics_metrics.get("tasks_created", 0)),
+                    "total_charts_flagged": int(analytics_metrics.get("charts_flagged", 0)),
+                    "total_messages_sent": int(analytics_metrics.get("messages_sent", 0)),
+                    "total_followups_scheduled": int(analytics_metrics.get("followups_scheduled", 0))
+                }
+            })
+        
+        return {
             "account_id": account_id,
             "period": f"{days} days",
             "total_strategies": len(strategies),
             "active_strategies": len([s for s in strategies if s.is_active]),
-            "strategy_analytics": []
+            "strategy_analytics": strategy_analytics
         }
-        
-        # Get analytics for each strategy
-        for strategy in strategies:
-            strategy_analytics = self.get_strategy_analytics(
-                strategy.id, account_id, days
-            )
-            account_analytics["strategy_analytics"].append({
-                "strategy_name": strategy.name,
-                **strategy_analytics["summary"]
-            })
-        
-        return account_analytics

@@ -126,6 +126,7 @@ class KnowledgeSourceUpdate(BaseModel):
     access_level: Optional[AccessLevel] = None
     is_active: Optional[bool] = None
     is_public: Optional[bool] = None
+    processing_status: Optional[ProcessingStatus] = None
 
 
 class KnowledgeSourceResponse(KnowledgeSourceBase, BaseTimestampedModel):
@@ -217,11 +218,10 @@ class FileUploadResponse(BaseModel):
 
 
 class DirectUploadRequest(BaseModel):
-    """Schema for direct upload URL requests"""
-    file_name: str = Field(..., min_length=1, max_length=255)
-    content_type: str
-    file_size_bytes: int = Field(..., gt=0, le=100*1024*1024)  # Max 100MB
-    title: str = Field(..., min_length=1, max_length=255)
+    """Schema for direct content upload requests"""
+    name: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1)
+    content_type: str = "text/plain"
     description: str
     category: Optional[str] = None
     specialty: Optional[str] = None

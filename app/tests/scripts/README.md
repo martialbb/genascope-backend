@@ -31,19 +31,7 @@ This directory contains utility scripts for testing, debugging, and data managem
 - **Usage**: `bash test-integration.sh`
 - **Requirements**: Backend server running on localhost:8000
 
-### Invite System Testing
-
-#### `create_test_invites.py`
-- **Purpose**: Creates test invites for development and testing
-- **Features**: 
-  - Creates invites for different user roles
-  - Handles patient email validation
-  - Provides detailed output of invite creation process
-- **Usage**: `python create_test_invites.py`
-
-#### `create_test_invites_clean.py`
-- **Purpose**: Clean version of invite creation with minimal output
-- **Usage**: `python create_test_invites_clean.py`
+### Integration Testing
 
 #### `verify_invite_security.py`
 - **Purpose**: Comprehensive security testing for invite system
@@ -52,16 +40,6 @@ This directory contains utility scripts for testing, debugging, and data managem
   - Verifies proper authorization
   - Generates detailed security reports
 - **Usage**: `python verify_invite_security.py`
-
-### Debugging Scripts
-
-#### `debug_clinician_error.py`
-- **Purpose**: Debugging script for clinician-specific invite issues
-- **Usage**: `python debug_clinician_error.py`
-
-#### `debug_invite_test.py`
-- **Purpose**: General debugging for invite system issues
-- **Usage**: `python debug_invite_test.py`
 
 ## Running Scripts
 
@@ -104,14 +82,12 @@ python app/tests/scripts/script_name.py
 
 ### 🐛 **Debugging Scripts**
 - `debug_clinician_error.py`
-- `debug_invite_test.py`
-
 ## Common Use Cases
 
 ### 1. Setting Up Test Environment
 ```bash
-python app/tests/scripts/check_test_users.py
-python app/tests/scripts/create_test_invites.py
+# Run pytest to set up test data
+python -m pytest backend/app/tests/ -v
 ```
 
 ### 2. Security Testing
@@ -119,15 +95,14 @@ python app/tests/scripts/create_test_invites.py
 python app/tests/scripts/verify_invite_security.py
 ```
 
-### 3. Debugging Issues
+### 3. Integration Testing
 ```bash
-python app/tests/scripts/debug_invite_test.py
-python app/tests/scripts/debug_clinician_error.py
+bash test-integration.sh
 ```
 
 ## Notes
 
 - These scripts are for development and testing purposes only
 - Do not run against production databases
-- Scripts assume test data exists (users, patients, etc.)
+- Use pytest for consistent test data setup
 - Some scripts may modify database state (creating invites, expiring records)

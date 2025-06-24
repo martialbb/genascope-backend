@@ -205,7 +205,7 @@ def create_direct_knowledge_source(
         raise HTTPException(status_code=400, detail="User must be associated with an account")
     
     service = KnowledgeSourceService(db)
-    return service.direct_upload(request, account_id)
+    return service.direct_upload(request, current_user.id, account_id)
 
 
 @router.get("/knowledge-sources", response_model=List[KnowledgeSourceResponse])
@@ -259,6 +259,22 @@ def update_knowledge_source(
     return service.update_knowledge_source(source_id, update_data, account_id)
 
 
+@router.delete("/knowledge-sources/bulk")
+def bulk_delete_knowledge_sources(
+    source_ids: List[str],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Bulk delete knowledge sources."""
+    account_id = getattr(current_user, 'account_id', None)
+    if not account_id:
+        raise HTTPException(status_code=400, detail="User must be associated with an account")
+    
+    service = KnowledgeSourceService(db)
+    deleted_count = service.bulk_delete_knowledge_sources(source_ids, account_id)
+    return {"message": f"Successfully deleted {deleted_count} knowledge sources"}
+
+
 @router.delete("/knowledge-sources/{source_id}")
 async def delete_knowledge_source(
     source_id: str,
@@ -290,22 +306,6 @@ def search_knowledge_sources(
     
     service = KnowledgeSourceService(db)
     return service.search_knowledge_sources(search_params, account_id)
-
-
-@router.delete("/knowledge-sources/bulk")
-def bulk_delete_knowledge_sources(
-    source_ids: List[int],
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Bulk delete knowledge sources."""
-    account_id = getattr(current_user, 'account_id', None)
-    if not account_id:
-        raise HTTPException(status_code=400, detail="User must be associated with an account")
-    
-    service = KnowledgeSourceService(db)
-    deleted_count = service.bulk_delete_knowledge_sources(source_ids, account_id)
-    return {"message": f"Successfully deleted {deleted_count} knowledge sources"}
 
 
 @router.get("/knowledge-sources/processing/queue", response_model=List[KnowledgeSourceResponse])

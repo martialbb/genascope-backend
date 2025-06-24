@@ -1,5 +1,5 @@
 """Chat Configuration database models."""
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, DateTime, JSON, Boolean, Date, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Text, DateTime, JSON, Boolean, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.database import Base
@@ -101,6 +101,7 @@ class StrategyKnowledgeSource(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     strategy_id = Column(String, ForeignKey("chat_strategies.id", ondelete="CASCADE"), nullable=False)
     knowledge_source_id = Column(String, ForeignKey("knowledge_sources.id", ondelete="CASCADE"), nullable=False)
+    weight = Column(Float, nullable=True, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
@@ -116,8 +117,9 @@ class TargetingRule(Base):
     strategy_id = Column(String, ForeignKey("chat_strategies.id", ondelete="CASCADE"), nullable=False)
     field = Column(String, nullable=False)  # 'appointment_type', 'patient_age', 'diagnosis', etc.
     operator = Column(String, nullable=False)  # 'is', 'is_not', 'is_between', 'contains', etc.
-    value = Column(JSONB, nullable=True)  # Flexible value storage (string, array, object)
-    sequence = Column(Integer, nullable=False)
+    value = Column(JSONB, nullable=False)  # Flexible value storage (string, array, object)
+    sequence = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -132,8 +134,9 @@ class OutcomeAction(Base):
     strategy_id = Column(String, ForeignKey("chat_strategies.id", ondelete="CASCADE"), nullable=False)
     condition = Column(String, nullable=False)  # 'meets_criteria', 'does_not_meet_criteria', 'incomplete_data'
     action_type = Column(String, nullable=False)  # 'create_task', 'flag_chart', 'send_message', 'schedule_followup'
-    details = Column(JSONB, nullable=True)  # Action-specific configuration
-    sequence = Column(Integer, nullable=False)
+    details = Column(JSONB, nullable=False)  # Action-specific configuration
+    sequence = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

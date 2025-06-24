@@ -35,6 +35,23 @@ class ChatStrategyRepository(BaseRepository):
             
         return query.offset(skip).limit(limit).all()
     
+    def get_by_account_with_details(self, account_id: str, skip: int = 0, limit: int = 100, active_only: bool = False) -> List[ChatStrategy]:
+        """Get all strategies for a specific account with full relationship details loaded"""
+        query = (
+            self.db.query(ChatStrategy)
+            .options(
+                selectinload(ChatStrategy.targeting_rules),
+                selectinload(ChatStrategy.outcome_actions),
+                selectinload(ChatStrategy.knowledge_sources)
+            )
+            .filter(ChatStrategy.account_id == account_id)
+        )
+        
+        if active_only:
+            query = query.filter(ChatStrategy.is_active == True)
+            
+        return query.offset(skip).limit(limit).all()
+    
     def get_active_strategies(self, account_id: str) -> List[ChatStrategy]:
         """Get all active strategies for an account"""
         return (
@@ -203,7 +220,7 @@ class KnowledgeSourceRepository(BaseRepository):
             and_(
                 or_(
                     KnowledgeSource.account_id == account_id,
-                    KnowledgeSource.is_public == True
+                    KnowledgeSource.access_level == 'public'
                 ),
                 KnowledgeSource.is_active == True
             )
@@ -213,48 +230,50 @@ class KnowledgeSourceRepository(BaseRepository):
         if request.query:
             query = query.filter(
                 or_(
-                    KnowledgeSource.title.ilike(f"%{request.query}%"),
+                    KnowledgeSource.name.ilike(f"%{request.query}%"),
                     KnowledgeSource.description.ilike(f"%{request.query}%"),
-                    KnowledgeSource.extracted_text.ilike(f"%{request.query}%"),
                     KnowledgeSource.content_summary.ilike(f"%{request.query}%")
                 )
             )
         
         # Apply filters
         if request.category:
-            query = query.filter(KnowledgeSource.category.in_(request.category))
+            # Note: category field doesn't exist in current model, skip for now
+            pass
         
         if request.file_types:
-            query = query.filter(KnowledgeSource.file_extension.in_(request.file_types))
+            # Note: file_extension field doesn't exist in current model, skip for now  
+            pass
         
         if request.processing_status:
             status_values = [status.value for status in request.processing_status]
             query = query.filter(KnowledgeSource.processing_status.in_(status_values))
         
         if request.specialty:
-            query = query.filter(KnowledgeSource.specialty.in_(request.specialty))
+            # Note: specialty field doesn't exist in current model, skip for now
+            pass
         
         if request.size_min:
-            query = query.filter(KnowledgeSource.file_size_bytes >= request.size_min)
+            query = query.filter(KnowledgeSource.file_size >= request.size_min)
         
         if request.size_max:
-            query = query.filter(KnowledgeSource.file_size_bytes <= request.size_max)
+            query = query.filter(KnowledgeSource.file_size <= request.size_max)
         
         if request.date_from:
-            query = query.filter(KnowledgeSource.upload_date >= request.date_from)
+            query = query.filter(KnowledgeSource.created_at >= request.date_from)
         
         if request.date_to:
-            query = query.filter(KnowledgeSource.upload_date <= request.date_to)
+            query = query.filter(KnowledgeSource.created_at <= request.date_to)
         
         # Apply sorting
         if request.sort_by == "date":
-            order_col = KnowledgeSource.upload_date
+            order_col = KnowledgeSource.created_at
         elif request.sort_by == "size":
-            order_col = KnowledgeSource.file_size_bytes
+            order_col = KnowledgeSource.file_size
         elif request.sort_by == "title":
-            order_col = KnowledgeSource.title
+            order_col = KnowledgeSource.name
         elif request.sort_by == "last_accessed":
-            order_col = KnowledgeSource.last_accessed_at
+            order_col = KnowledgeSource.updated_at  # Use updated_at as proxy
         else:  # relevance - default to created_at for now
             order_col = KnowledgeSource.created_at
         
@@ -283,66 +302,61 @@ class KnowledgeSourceRepository(BaseRepository):
         """Generate facets for search filtering"""
         base_query = self.db.query(KnowledgeSource).filter(
             and_(
-                or_(
-                    KnowledgeSource.account_id == account_id,
-                    KnowledgeSource.is_public == True
-                ),
+                KnowledgeSource.account_id == account_id,
                 KnowledgeSource.is_active == True
             )
         )
         
-        # Category facets
-        category_facets = (
+        # Source type facets
+        source_type_facets = (
             base_query
-            .with_entities(KnowledgeSource.category, func.count(KnowledgeSource.id))
-            .filter(KnowledgeSource.category.isnot(None))
-            .group_by(KnowledgeSource.category)
+            .with_entities(KnowledgeSource.source_type, func.count(KnowledgeSource.id))
+            .filter(KnowledgeSource.source_type.isnot(None))
+            .group_by(KnowledgeSource.source_type)
             .all()
         )
         
-        # File type facets
-        file_type_facets = (
+        # Content type facets
+        content_type_facets = (
             base_query
-            .with_entities(KnowledgeSource.file_extension, func.count(KnowledgeSource.id))
-            .filter(KnowledgeSource.file_extension.isnot(None))
-            .group_by(KnowledgeSource.file_extension)
+            .with_entities(KnowledgeSource.content_type, func.count(KnowledgeSource.id))
+            .filter(KnowledgeSource.content_type.isnot(None))
+            .group_by(KnowledgeSource.content_type)
             .all()
         )
         
-        # Specialty facets
-        specialty_facets = (
+        # Access level facets
+        access_level_facets = (
             base_query
-            .with_entities(KnowledgeSource.specialty, func.count(KnowledgeSource.id))
-            .filter(KnowledgeSource.specialty.isnot(None))
-            .group_by(KnowledgeSource.specialty)
+            .with_entities(KnowledgeSource.access_level, func.count(KnowledgeSource.id))
+            .filter(KnowledgeSource.access_level.isnot(None))
+            .group_by(KnowledgeSource.access_level)
             .all()
         )
         
         return {
-            "categories": [{"name": cat, "count": count} for cat, count in category_facets],
-            "file_types": [{"type": ft, "count": count} for ft, count in file_type_facets],
-            "specialties": [{"specialty": spec, "count": count} for spec, count in specialty_facets]
+            "source_types": [{"type": st, "count": count} for st, count in source_type_facets],
+            "content_types": [{"type": ct, "count": count} for ct, count in content_type_facets],
+            "access_levels": [{"level": al, "count": count} for al, count in access_level_facets]
         }
     
     def create_knowledge_source(self, ks_data: KnowledgeSourceCreate, user_id: str, account_id: str) -> KnowledgeSource:
         """Create a new knowledge source"""
         knowledge_source = KnowledgeSource(
-            title=ks_data.title,
-            type=ks_data.type,
-            url=ks_data.url,
+            name=ks_data.name,
+            source_type=ks_data.source_type,
             description=ks_data.description,
-            category=ks_data.category,
-            specialty=ks_data.specialty,
-            version=ks_data.version,
-            tags=ks_data.tags,
+            content_type=ks_data.content_type,
             access_level=ks_data.access_level,
-            uploaded_by=user_id,
+            created_by=user_id,
             account_id=account_id,
-            upload_date=datetime.utcnow()
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
         
         self.db.add(knowledge_source)
         self.db.commit()
+        self.db.refresh(knowledge_source)
         return knowledge_source
     
     def update_knowledge_source(self, ks_id: str, ks_data: KnowledgeSourceUpdate) -> Optional[KnowledgeSource]:
@@ -351,9 +365,16 @@ class KnowledgeSourceRepository(BaseRepository):
         if not ks:
             return None
         
-        # Update fields
-        for field, value in ks_data.dict(exclude_unset=True).items():
-            setattr(ks, field, value)
+        # Update fields with proper field mapping
+        update_data = ks_data.model_dump(exclude_unset=True)
+        
+        # Map schema fields to model fields
+        if 'title' in update_data:
+            ks.name = update_data.pop('title')
+        
+        for field, value in update_data.items():
+            if hasattr(ks, field):
+                setattr(ks, field, value)
         
         ks.updated_at = datetime.utcnow()
         self.db.commit()
@@ -401,11 +422,12 @@ class KnowledgeSourceRepository(BaseRepository):
         )
         self.db.commit()
     
-    def get_processing_queue(self) -> List[KnowledgeSource]:
-        """Get knowledge sources waiting for processing"""
+    def get_processing_queue(self, account_id: int) -> List[KnowledgeSource]:
+        """Get knowledge sources waiting for processing for a specific account"""
         return (
             self.db.query(KnowledgeSource)
             .filter(
+                KnowledgeSource.account_id == account_id,
                 or_(
                     KnowledgeSource.processing_status == ProcessingStatus.PENDING.value,
                     KnowledgeSource.processing_status == ProcessingStatus.RETRY.value
@@ -459,6 +481,29 @@ class StrategyExecutionRepository(BaseRepository):
             .all()
         )
     
+    def get_by_strategy_and_date_range(
+        self, 
+        strategy_id: str, 
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None
+    ) -> List[StrategyExecution]:
+        """Get executions for a specific strategy within a date range"""
+        query = self.db.query(StrategyExecution).filter(StrategyExecution.strategy_id == strategy_id)
+        
+        if date_from:
+            # Convert date to datetime for comparison with started_at
+            from datetime import datetime, time
+            datetime_from = datetime.combine(date_from, time.min)
+            query = query.filter(StrategyExecution.started_at >= datetime_from)
+        
+        if date_to:
+            # Convert date to datetime for comparison with started_at  
+            from datetime import datetime, time
+            datetime_to = datetime.combine(date_to, time.max)
+            query = query.filter(StrategyExecution.started_at <= datetime_to)
+        
+        return query.order_by(desc(StrategyExecution.started_at)).all()
+    
     def get_by_patient(self, patient_id: str, skip: int = 0, limit: int = 100) -> List[StrategyExecution]:
         """Get executions for a specific patient"""
         return (
@@ -484,35 +529,57 @@ class StrategyAnalyticsRepository(BaseRepository):
         date_to: Optional[date] = None
     ) -> Dict[str, Any]:
         """Get analytics summary for a strategy"""
+        from datetime import datetime, time
+        
         query = self.db.query(StrategyAnalytics).filter(StrategyAnalytics.strategy_id == strategy_id)
         
         if date_from:
-            query = query.filter(StrategyAnalytics.date >= date_from)
+            datetime_from = datetime.combine(date_from, time.min)
+            query = query.filter(StrategyAnalytics.recorded_at >= datetime_from)
         if date_to:
-            query = query.filter(StrategyAnalytics.date <= date_to)
+            datetime_to = datetime.combine(date_to, time.max)
+            query = query.filter(StrategyAnalytics.recorded_at <= datetime_to)
         
         analytics = query.all()
         
         if not analytics:
-            return {}
+            return {
+                "total_patients_screened": 0,
+                "total_criteria_met": 0,
+                "total_criteria_not_met": 0,
+                "total_incomplete_data": 0,
+                "conversion_rate": 0.0,
+                "total_tasks_created": 0,
+                "total_charts_flagged": 0,
+                "total_messages_sent": 0,
+                "total_followups_scheduled": 0
+            }
         
-        total_screened = sum(a.patients_screened for a in analytics)
-        total_met = sum(a.criteria_met for a in analytics)
-        total_not_met = sum(a.criteria_not_met for a in analytics)
-        total_incomplete = sum(a.incomplete_data for a in analytics)
+        # Group analytics by metric name
+        metrics = {}
+        for a in analytics:
+            if a.metric_name not in metrics:
+                metrics[a.metric_name] = []
+            metrics[a.metric_name].append(a.metric_value)
+        
+        # Calculate totals
+        total_screened = sum(metrics.get("patients_screened", [0]))
+        total_met = sum(metrics.get("criteria_met", [0]))
+        total_not_met = sum(metrics.get("criteria_not_met", [0]))
+        total_incomplete = sum(metrics.get("incomplete_data", [0]))
         
         return {
-            "total_patients_screened": total_screened,
-            "total_criteria_met": total_met,
-            "total_criteria_not_met": total_not_met,
-            "total_incomplete_data": total_incomplete,
-            "conversion_rate": (total_met / total_screened * 100) if total_screened > 0 else 0,
-            "total_tasks_created": sum(a.tasks_created for a in analytics),
-            "total_charts_flagged": sum(a.charts_flagged for a in analytics),
-            "total_messages_sent": sum(a.messages_sent for a in analytics),
-            "total_followups_scheduled": sum(a.followups_scheduled for a in analytics),
+            "total_patients_screened": int(total_screened),
+            "total_criteria_met": int(total_met),
+            "total_criteria_not_met": int(total_not_met),
+            "total_incomplete_data": int(total_incomplete),
+            "conversion_rate": (total_met / total_screened * 100) if total_screened > 0 else 0.0,
+            "total_tasks_created": int(sum(metrics.get("tasks_created", [0]))),
+            "total_charts_flagged": int(sum(metrics.get("charts_flagged", [0]))),
+            "total_messages_sent": int(sum(metrics.get("messages_sent", [0]))),
+            "total_followups_scheduled": int(sum(metrics.get("followups_scheduled", [0]))),
             "date_range": {
-                "from": min(a.date for a in analytics),
-                "to": max(a.date for a in analytics)
+                "from": min(a.recorded_at for a in analytics).date() if analytics else None,
+                "to": max(a.recorded_at for a in analytics).date() if analytics else None
             }
         }
