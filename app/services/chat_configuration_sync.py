@@ -244,11 +244,12 @@ class ChatStrategyService:
         account_id: int,
         skip: int = 0,
         limit: int = 100,
-        active_only: bool = False
+        active_only: bool = False,
+        specialty: Optional[str] = None
     ) -> List[ChatStrategyResponse]:
         """List strategies for an account."""
         strategies = self.repository.get_by_account_with_details(
-            account_id, skip, limit, active_only
+            account_id, skip, limit, active_only, specialty
         )
         
         # Construct responses with full relationship data

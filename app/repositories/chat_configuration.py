@@ -35,7 +35,7 @@ class ChatStrategyRepository(BaseRepository):
             
         return query.offset(skip).limit(limit).all()
     
-    def get_by_account_with_details(self, account_id: str, skip: int = 0, limit: int = 100, active_only: bool = False) -> List[ChatStrategy]:
+    def get_by_account_with_details(self, account_id: str, skip: int = 0, limit: int = 100, active_only: bool = False, specialty: Optional[str] = None) -> List[ChatStrategy]:
         """Get all strategies for a specific account with full relationship details loaded"""
         query = (
             self.db.query(ChatStrategy)
@@ -49,6 +49,9 @@ class ChatStrategyRepository(BaseRepository):
         
         if active_only:
             query = query.filter(ChatStrategy.is_active == True)
+            
+        if specialty:
+            query = query.filter(ChatStrategy.specialty == specialty)
             
         return query.offset(skip).limit(limit).all()
     

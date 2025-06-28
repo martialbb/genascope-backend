@@ -55,6 +55,7 @@ def list_chat_strategies(
     skip: int = 0,
     limit: int = 100,
     active_only: bool = False,
+    specialty: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -64,7 +65,7 @@ def list_chat_strategies(
         raise HTTPException(status_code=400, detail="User must be associated with an account")
     
     service = ChatStrategyService(db)
-    return service.list_strategies(account_id, skip, limit, active_only)
+    return service.list_strategies(account_id, skip, limit, active_only, specialty)
 
 
 @router.get("/strategies/{strategy_id}", response_model=ChatStrategyResponse)
