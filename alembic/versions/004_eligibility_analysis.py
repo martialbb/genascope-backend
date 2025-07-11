@@ -22,7 +22,7 @@ def upgrade():
         sa.Column('patient_id', sa.String(36), nullable=False),
         sa.Column('result_data', sa.JSON(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.ForeignKeyConstraint(['patient_id'], ['patients.id'], ondelete='CASCADE'),
         sa.Index('idx_eligibility_patient', 'patient_id'),
     )

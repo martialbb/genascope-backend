@@ -58,25 +58,17 @@ class LabOrder(Base):
     __tablename__ = "lab_orders"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    patient_id = Column(String, ForeignKey("users.id"), nullable=False)
-    clinician_id = Column(String, ForeignKey("users.id"), nullable=False)
-    lab_id = Column(String, ForeignKey("lab_integrations.id"), nullable=True)
-    external_order_id = Column(String, nullable=True)  # ID from external lab system
-    order_number = Column(String, nullable=False, unique=True)  # Human-readable order number
-    test_type = Column(String, nullable=False)
-    status = Column(String, nullable=False, default=OrderStatus.PENDING)
-    requisition_details = Column(JSON, nullable=True)
-    notes = Column(Text, nullable=True)
+    patient_id = Column(String, ForeignKey("patients.id"), nullable=True)  # Fixed: references patients table
+    order_type = Column(String, nullable=False)  # Matches actual DB column
+    status = Column(String, nullable=True, default="pending")
+    lab_reference = Column(String, nullable=True)  # Matches actual DB column
+    ordered_by = Column(String, ForeignKey("users.id"), nullable=True)  # Matches actual DB column
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    collection_date = Column(DateTime, nullable=True)
-    completed_date = Column(DateTime, nullable=True)
 
-    # Relationships
-    patient = relationship("User", foreign_keys=[patient_id], backref="lab_orders")
-    clinician = relationship("User", foreign_keys=[clinician_id], backref="ordered_labs")
-    lab = relationship("LabIntegration", backref="orders")
-    results = relationship("LabResult", back_populates="order", cascade="all, delete-orphan")
+    # Relationships - need to import Patient model
+    # patient = relationship("Patient", foreign_keys=[patient_id], backref="lab_orders")
+    clinician = relationship("User", foreign_keys=[ordered_by], backref="ordered_labs")
 
 
 class LabResult(Base):
@@ -84,18 +76,14 @@ class LabResult(Base):
     __tablename__ = "lab_results"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    order_id = Column(String, ForeignKey("lab_orders.id"), nullable=False)
-    result_status = Column(String, nullable=False, default=ResultStatus.PENDING)
-    result_data = Column(JSON, nullable=True)
-    report_url = Column(String, nullable=True)  # URL to download the report
-    summary = Column(Text, nullable=True)
-    abnormal = Column(Boolean, default=False)
-    reviewed = Column(Boolean, default=False)
-    reviewed_by = Column(String, ForeignKey("users.id"), nullable=True)
-    reviewed_at = Column(DateTime, nullable=True)
+    lab_order_id = Column(String, ForeignKey("lab_orders.id"), nullable=True)  # Matches actual DB column
+    test_name = Column(String, nullable=False)  # Matches actual DB column
+    result_value = Column(String, nullable=True)  # Matches actual DB column
+    unit = Column(String, nullable=True)  # Matches actual DB column  
+    reference_range = Column(String, nullable=True)  # Matches actual DB column
+    status = Column(String, nullable=True, default="final")  # Matches actual DB column
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    order = relationship("LabOrder", back_populates="results")
-    reviewer = relationship("User", backref="reviewed_results")
+    order = relationship("LabOrder", backref="results")

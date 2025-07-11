@@ -31,7 +31,7 @@ def upgrade():
         sa.Column('status', sa.String(20), nullable=False, server_default='active'),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('updated_at', sa.DateTime(), nullable=False, 
-                  server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+                  server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('clinician_id', sa.String(36), nullable=True),
         sa.Column('account_id', sa.String(36), nullable=True),
         

@@ -48,7 +48,7 @@ class AppointmentService(BaseService):
             booked_appointments = self.repository.get_booked_appointments(clinician_id, requested_date)
             
             # Convert booked appointments to a set of unavailable times
-            booked_times = {appt.time.strftime("%H:%M") for appt in booked_appointments}
+            booked_times = {appt.date_time.strftime("%H:%M") for appt in booked_appointments}
             
             # Create time slots based on availability and bookings
             time_slots = []
@@ -58,9 +58,8 @@ class AppointmentService(BaseService):
                 
                 # If we have specific availability records, use those instead
                 if availability_records:
-                    time_obj = datetime.strptime(time_str, "%H:%M").time()
                     matching_availability = next(
-                        (a for a in availability_records if a.time.strftime("%H:%M") == time_str), 
+                        (a for a in availability_records if a.time_slot == time_str), 
                         None
                     )
                     if matching_availability:
@@ -82,13 +81,15 @@ class AppointmentService(BaseService):
             # Generate a unique appointment ID
             appointment_id = str(uuid.uuid4())
             
+            # Combine date and time into a single datetime object
+            appointment_datetime = datetime.strptime(f"{appointment_data.date} {appointment_data.time}", "%Y-%m-%d %H:%M")
+            
             # Create appointment object
             new_appointment = Appointment(
                 id=appointment_id,
                 clinician_id=appointment_data.clinician_id,
                 patient_id=appointment_data.patient_id,
-                date=datetime.strptime(appointment_data.date, "%Y-%m-%d").date(),
-                time=datetime.strptime(appointment_data.time, "%H:%M").time(),
+                date_time=appointment_datetime,
                 appointment_type=appointment_data.appointment_type,
                 status="scheduled",
                 notes=appointment_data.notes,
@@ -135,12 +136,10 @@ class AppointmentService(BaseService):
             
             # Add each time slot to the database
             for time_slot in availability.time_slots:
-                time_obj = datetime.strptime(time_slot, "%H:%M").time()
                 new_availability = Availability(
-                    id=str(uuid.uuid4()),
                     clinician_id=clinician_id,
                     date=availability_date,
-                    time=time_obj,
+                    time_slot=time_slot,
                     available=True
                 )
                 self.repository.set_availability(new_availability)
@@ -184,12 +183,10 @@ class AppointmentService(BaseService):
                     
                 # Add each time slot for this recurring date
                 for time_slot in availability.time_slots:
-                    time_obj = datetime.strptime(time_slot, "%H:%M").time()
                     new_availability = Availability(
-                        id=str(uuid.uuid4()),
                         clinician_id=clinician_id,
                         date=recur_date,
-                        time=time_obj,
+                        time_slot=time_slot,
                         available=True
                     )
                     self.repository.set_availability(new_availability)
@@ -230,8 +227,8 @@ class AppointmentService(BaseService):
             for appt in appointments:
                 patient_name = user_service.get_patient_name(appt.patient_id)
                 
-                # Format date and time
-                date_time = f"{appt.date.isoformat()}T{appt.time.strftime('%H:%M')}:00Z"
+                # Format date and time from date_time field
+                date_time = appt.date_time.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
                 
                 formatted_appointments.append({
                     "appointment_id": appt.id,
@@ -264,8 +261,8 @@ class AppointmentService(BaseService):
             for appt in appointments:
                 clinician_name = user_service.get_clinician_name(appt.clinician_id)
                 
-                # Format date and time
-                date_time = f"{appt.date.isoformat()}T{appt.time.strftime('%H:%M')}:00Z"
+                # Format date and time from date_time field
+                date_time = appt.date_time.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
                 
                 formatted_appointments.append({
                     "id": appt.id,  # Changed from appointment_id to id
@@ -301,17 +298,31 @@ class AppointmentService(BaseService):
                 raise HTTPException(status_code=404, detail=f"Appointment with ID {appointment_id} not found")
                 
             # Update fields if provided
-            if appointment_update.date:
-                try:
-                    appointment.date = datetime.strptime(appointment_update.date, "%Y-%m-%d").date()
-                except ValueError:
-                    raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-                    
-            if appointment_update.time:
-                try:
-                    appointment.time = datetime.strptime(appointment_update.time, "%H:%M").time()
-                except ValueError:
-                    raise HTTPException(status_code=400, detail="Invalid time format. Use 24-hour format HH:MM")
+            if appointment_update.date or appointment_update.time:
+                # If either date or time is being updated, we need to combine them
+                current_date = appointment.date_time.date()
+                current_time = appointment.date_time.time()
+                
+                # Use new date if provided, otherwise keep current
+                if appointment_update.date:
+                    try:
+                        new_date = datetime.strptime(appointment_update.date, "%Y-%m-%d").date()
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+                else:
+                    new_date = current_date
+                
+                # Use new time if provided, otherwise keep current
+                if appointment_update.time:
+                    try:
+                        new_time = datetime.strptime(appointment_update.time, "%H:%M").time()
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="Invalid time format. Use 24-hour format HH:MM")
+                else:
+                    new_time = current_time
+                
+                # Combine new date and time
+                appointment.date_time = datetime.combine(new_date, new_time)
                     
             if appointment_update.appointment_type:
                 appointment.appointment_type = appointment_update.appointment_type.value
@@ -338,8 +349,8 @@ class AppointmentService(BaseService):
                 "clinician_name": clinician_name,
                 "patient_id": updated_appointment.patient_id,
                 "patient_name": patient_name,
-                "date": updated_appointment.date,
-                "time": updated_appointment.time,
+                "date": updated_appointment.date_time.date(),
+                "time": updated_appointment.date_time.time(),
                 "appointment_type": updated_appointment.appointment_type,
                 "status": updated_appointment.status,
                 "notes": updated_appointment.notes,
@@ -352,6 +363,39 @@ class AppointmentService(BaseService):
             raise e
         except Exception as e:
             self.handle_exception(e, error_prefix="Failed to update appointment")
+    
+    def cancel_appointment(self, cancellation: 'AppointmentCancellation') -> Dict[str, Any]:
+        """
+        Cancel an appointment
+        """
+        try:
+            # Import here to avoid circular imports
+            from app.schemas.appointments import AppointmentCancellation
+            
+            # Retrieve the appointment
+            appointment = self.repository.get_appointment_by_id(cancellation.appointment_id)
+            if not appointment:
+                raise HTTPException(status_code=404, detail=f"Appointment with ID {cancellation.appointment_id} not found")
+                
+            # Update status to canceled
+            appointment.status = "canceled"
+            if cancellation.reason:
+                appointment.notes = f"{appointment.notes or ''}\nCancellation reason: {cancellation.reason}".strip()
+            
+            # Save the changes
+            updated_appointment = self.repository.update_appointment(appointment)
+            
+            return {
+                "message": "Appointment canceled successfully",
+                "appointment_id": cancellation.appointment_id,
+                "status": "canceled",
+                "reason": cancellation.reason
+            }
+            
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            self.handle_exception(e, error_prefix="Failed to cancel appointment")
     
     def _generate_confirmation_code(self, length: int = 6) -> str:
         """Generate a random confirmation code"""

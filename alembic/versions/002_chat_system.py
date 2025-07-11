@@ -21,7 +21,7 @@ def upgrade():
         sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
     )
 
 def downgrade():

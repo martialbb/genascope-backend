@@ -65,9 +65,9 @@ class ChatStrategyService:
             if not strategy_with_details:
                 raise HTTPException(status_code=500, detail="Failed to retrieve created strategy")
             
-            # Load targeting rules from database
+            # Load targeting rules from database (sorted by sequence)
             targeting_rules = []
-            for rule in strategy_with_details.targeting_rules:
+            for rule in sorted(strategy_with_details.targeting_rules, key=lambda r: r.sequence):
                 targeting_rules.append({
                     "id": str(rule.id),
                     "strategy_id": str(rule.strategy_id),
@@ -78,9 +78,9 @@ class ChatStrategyService:
                     "created_at": rule.created_at
                 })
             
-            # Load outcome actions from database
+            # Load outcome actions from database (sorted by sequence)
             outcome_actions = []
-            for action in strategy_with_details.outcome_actions:
+            for action in sorted(strategy_with_details.outcome_actions, key=lambda a: a.sequence):
                 outcome_actions.append({
                     "id": str(action.id),
                     "strategy_id": str(action.strategy_id),
@@ -93,7 +93,9 @@ class ChatStrategyService:
             
             # Load knowledge sources from database
             knowledge_sources = []
-            for ks in strategy_with_details.knowledge_sources:
+            for ks_assoc in strategy_with_details.knowledge_sources:
+                # Access the actual knowledge source through the association
+                ks = ks_assoc.knowledge_source
                 # Create a comprehensive knowledge source response
                 ks_response = {
                     "id": str(ks.id),
@@ -161,7 +163,7 @@ class ChatStrategyService:
         
         # Load targeting rules from database
         targeting_rules = []
-        for rule in strategy.targeting_rules:
+        for rule in sorted(strategy.targeting_rules, key=lambda r: r.sequence):
             targeting_rules.append({
                 "id": str(rule.id),
                 "strategy_id": str(rule.strategy_id),
@@ -174,7 +176,7 @@ class ChatStrategyService:
         
         # Load outcome actions from database
         outcome_actions = []
-        for action in strategy.outcome_actions:
+        for action in sorted(strategy.outcome_actions, key=lambda a: a.sequence):
             outcome_actions.append({
                 "id": str(action.id),
                 "strategy_id": str(action.strategy_id),
@@ -187,7 +189,9 @@ class ChatStrategyService:
         
         # Load knowledge sources from database
         knowledge_sources = []
-        for ks in strategy.knowledge_sources:
+        for ks_assoc in strategy.knowledge_sources:
+            # Access the actual knowledge source through the association
+            ks = ks_assoc.knowledge_source
             # Create a comprehensive knowledge source response
             ks_response = {
                 "id": str(ks.id),
@@ -255,9 +259,9 @@ class ChatStrategyService:
         # Construct responses with full relationship data
         result = []
         for strategy in strategies:
-            # Load targeting rules from database
+            # Load targeting rules from database (sorted by sequence)
             targeting_rules = []
-            for rule in strategy.targeting_rules:
+            for rule in sorted(strategy.targeting_rules, key=lambda r: r.sequence):
                 targeting_rules.append({
                     "id": str(rule.id),
                     "strategy_id": str(rule.strategy_id),
@@ -268,9 +272,9 @@ class ChatStrategyService:
                     "created_at": rule.created_at
                 })
             
-            # Load outcome actions from database
+            # Load outcome actions from database (sorted by sequence)
             outcome_actions = []
-            for action in strategy.outcome_actions:
+            for action in sorted(strategy.outcome_actions, key=lambda a: a.sequence):
                 outcome_actions.append({
                     "id": str(action.id),
                     "strategy_id": str(action.strategy_id),
@@ -283,7 +287,9 @@ class ChatStrategyService:
             
             # Load knowledge sources from database
             knowledge_sources = []
-            for ks in strategy.knowledge_sources:
+            for ks_assoc in strategy.knowledge_sources:
+                # Access the actual knowledge source through the association
+                ks = ks_assoc.knowledge_source
                 # Create a comprehensive knowledge source response
                 ks_response = {
                     "id": str(ks.id),
@@ -380,14 +386,14 @@ class ChatStrategyService:
         
         # Validate UUID format first
         try:
-            uuid_obj = uuid.UUID(strategy_id)
+            uuid.UUID(strategy_id)  # Just validate, don't convert
         except ValueError:
             raise HTTPException(status_code=404, detail="Strategy not found")
         
         # First check if strategy exists and belongs to account using raw SQL
         result = self.db.execute(
             text("SELECT account_id FROM chat_strategies WHERE id = :strategy_id"),
-            {"strategy_id": uuid_obj}
+            {"strategy_id": strategy_id}  # Use string directly
         ).fetchone()
         
         if not result:
@@ -399,7 +405,7 @@ class ChatStrategyService:
         # Delete using raw SQL to avoid ORM relationship issues
         deleted_count = self.db.execute(
             text("DELETE FROM chat_strategies WHERE id = :strategy_id"),
-            {"strategy_id": uuid_obj}
+            {"strategy_id": strategy_id}  # Use string directly
         ).rowcount
         
         self.db.commit()
@@ -756,18 +762,18 @@ class KnowledgeSourceService:
         
         # Validate UUID format first
         try:
-            uuid_obj = uuid.UUID(source_id)
+            uuid.UUID(source_id)  # Just validate, don't convert
         except ValueError:
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
         # First get the source details including file path using raw SQL
         result = self.db.execute(
             text("""
-            SELECT account_id, file_path, s3_bucket, s3_key 
+            SELECT account_id, file_path 
             FROM knowledge_sources 
             WHERE id = :source_id
             """),
-            {"source_id": uuid_obj}
+            {"source_id": source_id}  # Use string directly
         ).fetchone()
         
         if not result:
@@ -776,19 +782,13 @@ class KnowledgeSourceService:
         if str(result[0]) != str(account_id):
             raise HTTPException(status_code=404, detail="Knowledge source not found")
         
-        # Delete the file from storage if it exists
-        if result.s3_bucket and result.s3_key:
-            try:
-                storage_client = get_configured_storage_client()
-                await storage_client.delete_file(result.s3_bucket, result.s3_key)
-            except Exception as e:
-                logger.warning(f"Failed to delete file from storage: {e}")
-                # Continue with database deletion even if file deletion fails
+        # Note: S3 file deletion is not implemented yet since s3_bucket/s3_key columns don't exist
+        # TODO: Add S3 storage columns and implement file cleanup when storage integration is added
         
         # Delete from database using raw SQL to avoid ORM relationship issues
         deleted_count = self.db.execute(
             text("DELETE FROM knowledge_sources WHERE id = :source_id"),
-            {"source_id": uuid_obj}
+            {"source_id": source_id}  # Use string directly
         ).rowcount
         
         self.db.commit()
@@ -871,26 +871,53 @@ class StrategyAnalyticsService:
         
         # Query analytics metrics from the database
         analytics_query = text("""
-            SELECT metric_name, SUM(metric_value) as total_value
+            SELECT 
+                SUM(patients_screened) as total_patients_screened,
+                SUM(criteria_met) as total_criteria_met,
+                SUM(criteria_not_met) as total_criteria_not_met,
+                SUM(incomplete_data) as total_incomplete_data,
+                SUM(tasks_created) as total_tasks_created,
+                SUM(charts_flagged) as total_charts_flagged,
+                SUM(messages_sent) as total_messages_sent,
+                SUM(followups_scheduled) as total_followups_scheduled,
+                AVG(avg_duration_minutes) as avg_duration_minutes
             FROM strategy_analytics 
             WHERE strategy_id = :strategy_id 
-                AND recorded_at >= :start_date 
-                AND recorded_at <= :end_date
-            GROUP BY metric_name
+                AND date >= :start_date 
+                AND date <= :end_date
         """)
         
         analytics_result = self.db.execute(analytics_query, {
             "strategy_id": strategy_id,
-            "start_date": start_date,
-            "end_date": end_date
-        }).fetchall()
+            "start_date": start_date.date(),
+            "end_date": end_date.date()
+        }).fetchone()
         
-        # Convert analytics results to a dictionary
-        analytics_metrics = {row[0]: row[1] for row in analytics_result}
+        # Extract metrics from the result row
+        if analytics_result:
+            (total_patients_screened, total_criteria_met, total_criteria_not_met, 
+             total_incomplete_data, total_tasks_created, total_charts_flagged,
+             total_messages_sent, total_followups_scheduled, avg_duration_minutes) = analytics_result
+            
+            # Convert None values to 0
+            total_patients_screened = total_patients_screened or 0
+            total_criteria_met = total_criteria_met or 0
+            total_criteria_not_met = total_criteria_not_met or 0
+            total_incomplete_data = total_incomplete_data or 0
+            total_tasks_created = total_tasks_created or 0
+            total_charts_flagged = total_charts_flagged or 0
+            total_messages_sent = total_messages_sent or 0
+            total_followups_scheduled = total_followups_scheduled or 0
+            avg_duration_minutes = avg_duration_minutes or 0
+        else:
+            # No analytics data found
+            (total_patients_screened, total_criteria_met, total_criteria_not_met, 
+             total_incomplete_data, total_tasks_created, total_charts_flagged,
+             total_messages_sent, total_followups_scheduled, avg_duration_minutes) = (0, 0, 0, 0, 0, 0, 0, 0, 0)
         
         # Query execution data
         executions_query = text("""
-            SELECT status, started_at, completed_at, results
+            SELECT execution_status, started_at, completed_at, executed_actions
             FROM strategy_executions 
             WHERE strategy_id = :strategy_id 
                 AND started_at >= :start_date 
@@ -942,15 +969,15 @@ class StrategyAnalyticsService:
                 "outcomes": {}
             },
             "analytics": {
-                "patients_screened": int(analytics_metrics.get("patients_screened", 0)),
-                "criteria_met": int(analytics_metrics.get("criteria_met", 0)),
-                "criteria_not_met": int(analytics_metrics.get("criteria_not_met", 0)),
-                "incomplete_data": int(analytics_metrics.get("incomplete_data", 0)),
-                "conversion_rate": round(analytics_metrics.get("conversion_rate", 0.0), 2),
-                "total_tasks_created": int(analytics_metrics.get("tasks_created", 0)),
-                "total_charts_flagged": int(analytics_metrics.get("charts_flagged", 0)),
-                "total_messages_sent": int(analytics_metrics.get("messages_sent", 0)),
-                "total_followups_scheduled": int(analytics_metrics.get("followups_scheduled", 0))
+                "patients_screened": int(total_patients_screened),
+                "criteria_met": int(total_criteria_met),
+                "criteria_not_met": int(total_criteria_not_met),
+                "incomplete_data": int(total_incomplete_data),
+                "conversion_rate": round((total_criteria_met / total_patients_screened * 100) if total_patients_screened > 0 else 0.0, 2),
+                "total_tasks_created": int(total_tasks_created),
+                "total_charts_flagged": int(total_charts_flagged),
+                "total_messages_sent": int(total_messages_sent),
+                "total_followups_scheduled": int(total_followups_scheduled)
             },
             "executions": executions
         }
@@ -974,27 +1001,53 @@ class StrategyAnalyticsService:
         
         strategy_analytics = []
         for strategy in strategies:
-            # Query analytics metrics for this strategy
+            # Query analytics metrics for this strategy  
             analytics_query = text("""
-                SELECT metric_name, SUM(metric_value) as total_value
+                SELECT 
+                    SUM(patients_screened) as total_patients_screened,
+                    SUM(criteria_met) as total_criteria_met,
+                    SUM(criteria_not_met) as total_criteria_not_met,
+                    SUM(incomplete_data) as total_incomplete_data,
+                    SUM(tasks_created) as total_tasks_created,
+                    SUM(charts_flagged) as total_charts_flagged,
+                    SUM(messages_sent) as total_messages_sent,
+                    SUM(followups_scheduled) as total_followups_scheduled
                 FROM strategy_analytics 
                 WHERE strategy_id = :strategy_id 
-                    AND recorded_at >= :start_date 
-                    AND recorded_at <= :end_date
-                GROUP BY metric_name
+                    AND date >= :start_date 
+                    AND date <= :end_date
             """)
             
             analytics_result = self.db.execute(analytics_query, {
                 "strategy_id": str(strategy.id),
-                "start_date": start_date,
-                "end_date": end_date
-            }).fetchall()
+                "start_date": start_date.date(),
+                "end_date": end_date.date()
+            }).fetchone()
             
-            analytics_metrics = {row[0]: row[1] for row in analytics_result}
+            # Extract metrics from the result row
+            if analytics_result:
+                (total_patients_screened, total_criteria_met, total_criteria_not_met, 
+                 total_incomplete_data, total_tasks_created, total_charts_flagged,
+                 total_messages_sent, total_followups_scheduled) = analytics_result
+                
+                # Convert None values to 0
+                total_patients_screened = total_patients_screened or 0
+                total_criteria_met = total_criteria_met or 0
+                total_criteria_not_met = total_criteria_not_met or 0
+                total_incomplete_data = total_incomplete_data or 0
+                total_tasks_created = total_tasks_created or 0
+                total_charts_flagged = total_charts_flagged or 0
+                total_messages_sent = total_messages_sent or 0
+                total_followups_scheduled = total_followups_scheduled or 0
+            else:
+                # No analytics data found
+                (total_patients_screened, total_criteria_met, total_criteria_not_met, 
+                 total_incomplete_data, total_tasks_created, total_charts_flagged,
+                 total_messages_sent, total_followups_scheduled) = (0, 0, 0, 0, 0, 0, 0, 0)
             
             # Query execution data for this strategy
             executions_query = text("""
-                SELECT status, started_at, completed_at
+                SELECT execution_status, started_at, completed_at
                 FROM strategy_executions 
                 WHERE strategy_id = :strategy_id 
                     AND started_at >= :start_date 
@@ -1019,15 +1072,15 @@ class StrategyAnalyticsService:
                 "successful_executions": successful_executions,
                 "success_rate": round(success_rate, 2),
                 "analytics": {
-                    "patients_screened": int(analytics_metrics.get("patients_screened", 0)),
-                    "criteria_met": int(analytics_metrics.get("criteria_met", 0)),
-                    "criteria_not_met": int(analytics_metrics.get("criteria_not_met", 0)),
-                    "incomplete_data": int(analytics_metrics.get("incomplete_data", 0)),
-                    "conversion_rate": round(analytics_metrics.get("conversion_rate", 0.0), 2),
-                    "total_tasks_created": int(analytics_metrics.get("tasks_created", 0)),
-                    "total_charts_flagged": int(analytics_metrics.get("charts_flagged", 0)),
-                    "total_messages_sent": int(analytics_metrics.get("messages_sent", 0)),
-                    "total_followups_scheduled": int(analytics_metrics.get("followups_scheduled", 0))
+                    "patients_screened": int(total_patients_screened),
+                    "criteria_met": int(total_criteria_met),
+                    "criteria_not_met": int(total_criteria_not_met),
+                    "incomplete_data": int(total_incomplete_data),
+                    "conversion_rate": round((total_criteria_met / total_patients_screened * 100) if total_patients_screened > 0 else 0.0, 2),
+                    "total_tasks_created": int(total_tasks_created),
+                    "total_charts_flagged": int(total_charts_flagged),
+                    "total_messages_sent": int(total_messages_sent),
+                    "total_followups_scheduled": int(total_followups_scheduled)
                 }
             })
         

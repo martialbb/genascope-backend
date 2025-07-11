@@ -18,7 +18,7 @@ def upgrade():
     op.add_column('users', sa.Column('email', sa.String(255), nullable=False, unique=True))
     op.add_column('users', sa.Column('hashed_password', sa.String(255), nullable=True))
     op.add_column('users', sa.Column('account_id', sa.String(36), nullable=True))
-    op.add_column('users', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')))
+    op.add_column('users', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('TRUE')))
     op.add_column('users', sa.Column('clinician_id', sa.String(36), nullable=True))
 
 def downgrade():

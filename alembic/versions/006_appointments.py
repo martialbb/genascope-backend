@@ -25,7 +25,7 @@ def upgrade():
         sa.Column('time_slot', sa.String(5), nullable=False),  # e.g., "10:00"
         sa.Column('available', sa.Boolean(), nullable=False, default=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         
         sa.PrimaryKeyConstraint('id'),
         sa.Index('idx_clinician_availability_date', 'clinician_id', 'date'),
@@ -38,12 +38,12 @@ def upgrade():
         sa.Column('patient_id', sa.String(36), nullable=False),
         sa.Column('clinician_id', sa.String(36), nullable=False),
         sa.Column('date_time', sa.DateTime(), nullable=False),
-        sa.Column('appointment_type', sa.Enum('virtual', 'in-person'), nullable=False),
-        sa.Column('status', sa.Enum('scheduled', 'completed', 'canceled', 'rescheduled'), nullable=False),
+        sa.Column('appointment_type', sa.Enum('virtual', 'in-person', name='appointment_type'), nullable=False),
+        sa.Column('status', sa.Enum('scheduled', 'completed', 'canceled', 'rescheduled', name='appointment_status'), nullable=False),
         sa.Column('notes', sa.Text(), nullable=True),
         sa.Column('confirmation_code', sa.String(10), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(['patient_id'], ['patients.id'], ondelete='CASCADE'),
@@ -57,3 +57,6 @@ def upgrade():
 def downgrade():
     op.drop_table('appointments')
     op.drop_table('clinician_availability')
+    # Drop ENUMs
+    op.execute("DROP TYPE IF EXISTS appointment_type")
+    op.execute("DROP TYPE IF EXISTS appointment_status")

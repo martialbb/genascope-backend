@@ -149,3 +149,28 @@ class PatientService(BaseService):
         self.db.refresh(patient)
         
         return patient
+
+    def delete_patient(self, patient_id: str) -> bool:
+        """
+        Delete a patient by ID.
+        
+        Args:
+            patient_id: ID of the patient to delete
+            
+        Returns:
+            bool: True if deletion was successful, False otherwise
+        """
+        try:
+            # Get existing patient
+            patient = self.patient_repository.get_by_id(patient_id)
+            if not patient:
+                return False
+            
+            # Delete the patient
+            self.db.delete(patient)
+            self.db.commit()
+            
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise e

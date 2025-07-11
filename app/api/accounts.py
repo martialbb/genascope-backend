@@ -100,6 +100,7 @@ async def get_accounts(
             result.append({
                 "id": str(account.id),
                 "name": account.name,
+                "domain": getattr(account, 'domain', None),  # Include domain field
                 "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
                 "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
                 "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
@@ -148,6 +149,7 @@ async def get_account(
         result = {
             "id": str(account.id),
             "name": account.name,
+            "domain": getattr(account, 'domain', None),  # Include domain field
             "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
             "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
             "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
@@ -204,6 +206,7 @@ async def create_account(
         result = {
             "id": str(account.id),
             "name": account.name,
+            "domain": getattr(account, 'domain', None),  # Include domain field
             "status": getattr(account, 'status', 'active'),  # Handle missing status field gracefully
             "created_at": account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else None,
             "updated_at": account.updated_at.isoformat() if hasattr(account, 'updated_at') and account.updated_at else None
@@ -257,6 +260,7 @@ async def update_account(
         result = {
             "id": str(updated_account.id),
             "name": updated_account.name,
+            "domain": getattr(updated_account, 'domain', None),  # Include domain field
             "status": getattr(updated_account, 'status', 'active'),  # Handle missing status field gracefully
             "created_at": updated_account.created_at.isoformat() if hasattr(updated_account, 'created_at') and updated_account.created_at else None,
             "updated_at": updated_account.updated_at.isoformat() if hasattr(updated_account, 'updated_at') and updated_account.updated_at else None

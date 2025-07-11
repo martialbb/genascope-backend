@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Try to import the required models, with fallback for ChatSession if not yet imported
 try:
-    from app.models.chat import ChatSession
+    from app.models.ai_chat import AIChatSession
     from app.models.patient import Patient
     from app.models.user import User
     
     CHAT_SESSION_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Could not import ChatSession model: {e}")
+    logger.warning(f"Could not import AIChatSession model: {e}")
     logger.warning("Skipping chat session linkage. You may need to update the import paths.")
     CHAT_SESSION_AVAILABLE = False
 

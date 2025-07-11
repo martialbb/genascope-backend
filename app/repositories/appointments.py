@@ -1,5 +1,6 @@
 from datetime import date, datetime, time
 from typing import List, Optional, Type
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.repositories.base import BaseRepository
@@ -31,7 +32,7 @@ class AppointmentRepository:
         """
         return self.db.query(Appointment).filter(
             Appointment.clinician_id == clinician_id,
-            Appointment.date == requested_date,
+            func.date(Appointment.date_time) == requested_date,
             Appointment.status != "canceled"
         ).all()
     
@@ -68,8 +69,8 @@ class AppointmentRepository:
         """
         return self.db.query(Appointment).filter(
             Appointment.clinician_id == clinician_id,
-            Appointment.date >= start_date,
-            Appointment.date <= end_date
+            func.date(Appointment.date_time) >= start_date,
+            func.date(Appointment.date_time) <= end_date
         ).all()
     
     def get_patient_appointments(self, patient_id: str) -> List[Appointment]:

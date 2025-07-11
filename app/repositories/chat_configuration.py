@@ -76,8 +76,8 @@ class ChatStrategyRepository(BaseRepository):
                 joinedload(ChatStrategy.knowledge_sources),
                 joinedload(ChatStrategy.targeting_rules),
                 joinedload(ChatStrategy.outcome_actions),
-                joinedload(ChatStrategy.creator),
-                joinedload(ChatStrategy.account)
+                # joinedload(ChatStrategy.creator),  # Temporarily disabled due to missing relationship
+                # joinedload(ChatStrategy.account)    # Temporarily disabled due to missing relationship
             )
             .filter(ChatStrategy.id == strategy_id)
             .first()
@@ -537,11 +537,9 @@ class StrategyAnalyticsRepository(BaseRepository):
         query = self.db.query(StrategyAnalytics).filter(StrategyAnalytics.strategy_id == strategy_id)
         
         if date_from:
-            datetime_from = datetime.combine(date_from, time.min)
-            query = query.filter(StrategyAnalytics.recorded_at >= datetime_from)
+            query = query.filter(StrategyAnalytics.date >= date_from)
         if date_to:
-            datetime_to = datetime.combine(date_to, time.max)
-            query = query.filter(StrategyAnalytics.recorded_at <= datetime_to)
+            query = query.filter(StrategyAnalytics.date <= date_to)
         
         analytics = query.all()
         
@@ -558,18 +556,15 @@ class StrategyAnalyticsRepository(BaseRepository):
                 "total_followups_scheduled": 0
             }
         
-        # Group analytics by metric name
-        metrics = {}
-        for a in analytics:
-            if a.metric_name not in metrics:
-                metrics[a.metric_name] = []
-            metrics[a.metric_name].append(a.metric_value)
-        
-        # Calculate totals
-        total_screened = sum(metrics.get("patients_screened", [0]))
-        total_met = sum(metrics.get("criteria_met", [0]))
-        total_not_met = sum(metrics.get("criteria_not_met", [0]))
-        total_incomplete = sum(metrics.get("incomplete_data", [0]))
+        # Calculate totals from actual columns
+        total_screened = sum(a.patients_screened for a in analytics)
+        total_met = sum(a.criteria_met for a in analytics)
+        total_not_met = sum(a.criteria_not_met for a in analytics)
+        total_incomplete = sum(a.incomplete_data for a in analytics)
+        total_tasks_created = sum(a.tasks_created for a in analytics)
+        total_charts_flagged = sum(a.charts_flagged for a in analytics)
+        total_messages_sent = sum(a.messages_sent for a in analytics)
+        total_followups_scheduled = sum(a.followups_scheduled for a in analytics)
         
         return {
             "total_patients_screened": int(total_screened),
@@ -577,12 +572,12 @@ class StrategyAnalyticsRepository(BaseRepository):
             "total_criteria_not_met": int(total_not_met),
             "total_incomplete_data": int(total_incomplete),
             "conversion_rate": (total_met / total_screened * 100) if total_screened > 0 else 0.0,
-            "total_tasks_created": int(sum(metrics.get("tasks_created", [0]))),
-            "total_charts_flagged": int(sum(metrics.get("charts_flagged", [0]))),
-            "total_messages_sent": int(sum(metrics.get("messages_sent", [0]))),
-            "total_followups_scheduled": int(sum(metrics.get("followups_scheduled", [0]))),
+            "total_tasks_created": int(total_tasks_created),
+            "total_charts_flagged": int(total_charts_flagged),
+            "total_messages_sent": int(total_messages_sent),
+            "total_followups_scheduled": int(total_followups_scheduled),
             "date_range": {
-                "from": min(a.recorded_at for a in analytics).date() if analytics else None,
-                "to": max(a.recorded_at for a in analytics).date() if analytics else None
+                "from": min(a.date for a in analytics) if analytics else None,
+                "to": max(a.date for a in analytics) if analytics else None
             }
         }

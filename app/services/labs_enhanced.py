@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from app.repositories.labs import LabIntegrationRepository, LabOrderRepository, LabResultRepository
 from app.repositories.users import UserRepository
+from app.repositories.patients import PatientRepository
 from app.models.lab import LabIntegration, LabOrder, LabResult, OrderStatus, ResultStatus, TestType
 from app.models.user import UserRole
 from app.services.base import BaseService
@@ -27,6 +28,7 @@ class LabService(BaseService):
         self.order_repository = LabOrderRepository(db)
         self.result_repository = LabResultRepository(db)
         self.user_repository = UserRepository(db)
+        self.patient_repository = PatientRepository(db)
         self.api_key = settings.LAB_API_KEY
         self.api_url = settings.LAB_API_URL
     
@@ -110,11 +112,12 @@ class LabService(BaseService):
         # Build order data
         order_data = {
             "patient_id": patient_id,
-            "clinician_id": clinician_id,
-            "test_type": test_type,
-            "lab_id": lab_id,
-            "requisition_details": requisition_details,
-            "notes": notes
+            "ordered_by": clinician_id,  # Fixed: use ordered_by instead of clinician_id
+            "order_type": test_type,     # Fixed: use order_type instead of test_type
+            # Note: lab_id, requisition_details, notes don't exist in current DB schema
+            # "lab_id": lab_id,
+            # "requisition_details": requisition_details,
+            # "notes": notes
         }
         
         try:
@@ -133,30 +136,31 @@ class LabService(BaseService):
         Create a new lab order
         """
         # Validate patient and clinician
-        patient = self.user_repository.get_by_id(order_data["patient_id"])
-        if not patient or patient.role != UserRole.PATIENT:
+        patient = self.patient_repository.get_by_id(order_data["patient_id"])
+        if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
         
-        clinician = self.user_repository.get_by_id(order_data["clinician_id"])
+        clinician = self.user_repository.get_by_id(order_data["ordered_by"])  # Fixed: use ordered_by
         if not clinician or clinician.role not in [UserRole.CLINICIAN, UserRole.ADMIN]:
             raise HTTPException(status_code=404, detail="Clinician not found")
         
-        # Validate lab if provided
-        if "lab_id" in order_data and order_data["lab_id"]:
-            lab = self.integration_repository.get_by_id(order_data["lab_id"])
-            if not lab or not lab.is_active:
-                raise HTTPException(status_code=404, detail="Lab not found or inactive")
+        # Validate lab if provided (note: lab_id field doesn't exist in current schema)
+        # if "lab_id" in order_data and order_data["lab_id"]:
+        #     lab = self.integration_repository.get_by_id(order_data["lab_id"])
+        #     if not lab or not lab.is_active:
+        #         raise HTTPException(status_code=404, detail="Lab not found or inactive")
         
         # Create the order
         order = self.order_repository.create_order(order_data)
         
+        # Note: lab_id field doesn't exist in current schema, so skip lab API integration
         # If a lab is specified, send the order to the lab's API
-        if order.lab_id:
-            try:
-                self._send_order_to_lab(order)
-            except Exception as e:
-                # Log the error but don't fail the order creation
-                print(f"Error sending order to lab: {str(e)}")
+        # if order.lab_id:
+        #     try:
+        #         self._send_order_to_lab(order)
+        #     except Exception as e:
+        #         # Log the error but don't fail the order creation
+        #         print(f"Error sending order to lab: {str(e)}")
         
         return order
     
@@ -170,25 +174,25 @@ class LabService(BaseService):
             raise ValueError("Lab not found")
         
         # Get patient and clinician details
-        patient = self.user_repository.get_by_id(order.patient_id)
-        clinician = self.user_repository.get_by_id(order.clinician_id)
+        patient = self.patient_repository.get_by_id(order.patient_id)
+        clinician = self.user_repository.get_by_id(order.ordered_by)  # Fixed: use ordered_by
         
         # Create the payload
         payload = {
-            "order_number": order.order_number,
-            "test_type": order.test_type,
+            "order_id": order.id,  # Use order id since order_number doesn't exist
+            "order_type": order.order_type,  # Fixed: use order_type instead of test_type
             "patient": {
                 "id": patient.id,
-                "name": patient.name,
-                "email": patient.email
+                "name": getattr(patient, 'name', 'Unknown'),
+                "email": getattr(patient, 'email', 'Unknown')
             },
             "clinician": {
                 "id": clinician.id,
                 "name": clinician.name,
                 "email": clinician.email
             },
-            "requisition_details": order.requisition_details,
-            "notes": order.notes
+            "lab_reference": order.lab_reference,
+            "status": order.status
         }
         
         # Send to lab API
@@ -206,10 +210,9 @@ class LabService(BaseService):
         # response_data = response.json()
         response_data = {"external_order_id": f"EXT-{str(uuid.uuid4())[:8]}"}
         
-        # Update the order with the external ID
+        # Update the order status (can't store external_order_id since field doesn't exist)
         self.order_repository.update_order(order.id, {
-            "external_order_id": response_data["external_order_id"],
-            "status": OrderStatus.APPROVED
+            "status": OrderStatus.APPROVED.value
         })
     
     def get_patient_orders(self, patient_id: str) -> List[LabOrder]:
@@ -237,12 +240,12 @@ class LabService(BaseService):
         
         # Get patient and clinician details
         patient = self.user_repository.get_by_id(order.patient_id)
-        clinician = self.user_repository.get_by_id(order.clinician_id)
+        clinician = self.user_repository.get_by_id(order.ordered_by)  # Fixed: use ordered_by
         
-        # Get lab details if applicable
+        # Get lab details if applicable (note: lab_id field doesn't exist in current schema)
         lab = None
-        if order.lab_id:
-            lab = self.integration_repository.get_by_id(order.lab_id)
+        # if order.lab_id:
+        #     lab = self.integration_repository.get_by_id(order.lab_id)
         
         return {
             "order": order,
@@ -274,35 +277,32 @@ class LabService(BaseService):
         if not result:
             raise HTTPException(status_code=404, detail="Results not found for this order")
         
-        # Format the response
+        # Format the response (only using fields that exist in current schema)
         return {
             "order_id": order.id,
-            "order_number": order.order_number,
-            "external_order_id": order.external_order_id,
-            "test_type": order.test_type,
-            "status": result.result_status,
-            "results": result.result_data,
-            "summary": result.summary,
-            "report_url": result.report_url,
-            "abnormal": result.abnormal,
-            "reviewed": result.reviewed,
-            "completed_at": result.created_at.isoformat() if result.created_at else None
+            "order_type": order.order_type,  # Fixed: use order_type
+            "status": result.status,  # Using actual DB field
+            "test_name": result.test_name,
+            "result_value": result.result_value,
+            "unit": result.unit,
+            "reference_range": result.reference_range,
+            "created_at": result.created_at.isoformat() if result.created_at else None
         }
     
     def record_lab_result(self, result_data: Dict[str, Any]) -> LabResult:
         """
         Record a new lab result
         """
-        # Validate order
-        order = self.order_repository.get_by_id(result_data["order_id"])
+        # Validate order (using correct field name)
+        order = self.order_repository.get_by_id(result_data["lab_order_id"])  # Fixed: use lab_order_id
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
         # Create the result
         result = self.result_repository.create_result(result_data)
         
-        # Update order status if completed
-        if result.result_status in [ResultStatus.FINAL, ResultStatus.AMENDED]:
+        # Update order status if completed (using fields that exist in schema)
+        if result.status in ['final', 'amended']:
             self.order_repository.update_order_status(order.id, OrderStatus.COMPLETED)
         
         return result
@@ -373,20 +373,20 @@ class LabService(BaseService):
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
-        # Create or update the result
+        # Create or update the result (using fields that exist in current schema)
         result_data = {
-            "order_id": order.id,
-            "result_status": webhook_data["result_status"],
-            "result_data": webhook_data["result_data"],
-            "report_url": webhook_data.get("report_url"),
-            "summary": webhook_data.get("summary"),
-            "abnormal": webhook_data.get("abnormal", False)
+            "lab_order_id": order.id,  # Fixed: use lab_order_id
+            "test_name": webhook_data.get("test_name", "Unknown Test"),
+            "result_value": str(webhook_data.get("result_data", "")),
+            "status": webhook_data["result_status"],
+            "unit": webhook_data.get("unit", ""),
+            "reference_range": webhook_data.get("reference_range", "")
         }
         
         result = self.result_repository.create_result(result_data)
         
-        # Update order status
-        if webhook_data["result_status"] == ResultStatus.FINAL:
+        # Update order status (using actual field values)
+        if webhook_data["result_status"] == 'final':
             self.order_repository.update_order_status(order.id, OrderStatus.COMPLETED)
         
         return {

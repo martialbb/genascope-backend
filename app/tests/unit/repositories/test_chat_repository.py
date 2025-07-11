@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import MagicMock
-from app.repositories.chat import ChatSessionRepository, ChatQuestionRepository, ChatAnswerRepository, RiskAssessmentRepository
-from app.models.chat import ChatSession, ChatQuestion, ChatAnswer, RiskAssessment
+from app.repositories.ai_chat_repository import AIChatSessionRepository
+from app.models.ai_chat import AIChatSession, ChatMessage, ExtractionRule, SessionAnalytics
 
 @pytest.fixture
 def db():
     return MagicMock()
 
-def test_chat_session_repository(db):
-    repo = ChatSessionRepository(db)
+def test_ai_chat_session_repository(db):
+    repo = AIChatSessionRepository(db)
     db.query().filter().first.return_value = 'session'
     assert repo.get_by_id('id') == 'session' or True
 

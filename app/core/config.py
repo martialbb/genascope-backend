@@ -68,6 +68,43 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "noreply@cancer-genix.com"
     EMAIL_ENABLED: bool = False
     
+    # AI Chat Configuration
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4"
+    OPENAI_TEMPERATURE: float = 0.7
+    OPENAI_MAX_TOKENS: int = 500
+    
+    # LangChain (optional for tracing)
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "genascope-chat"
+    LANGCHAIN_TRACING_V2: bool = False
+    
+    # Vector Embeddings (pgvector)
+    PGVECTOR_EXTENSION_ENABLED: bool = True
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-ada-002"
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 200
+    SIMILARITY_THRESHOLD: float = 0.7
+    
+    # Chat Configuration
+    MAX_CONVERSATION_TURNS: int = 20
+    SESSION_TIMEOUT_HOURS: int = 24
+    MAX_MESSAGE_LENGTH: int = 2000
+    
+    # Security
+    ANONYMIZE_BEFORE_AI: bool = True
+    MASK_PII: bool = True
+    ENABLE_AUDIT_LOGGING: bool = True
+    
+    # Caching
+    REDIS_URL: str = "redis://localhost:6379/0"
+    ENABLE_RESPONSE_CACHING: bool = True
+    RESPONSE_CACHE_TTL: int = 3600
+    
+    # External Tools
+    ENABLE_MOCK_CALCULATORS: bool = True
+    TYRER_CUZICK_API_URL: str = "https://api.tcrisk.com"
+    
     class Config:
         env_file = [".env.local", ".env"]  # Load .env.local first, then .env as fallback
         case_sensitive = True

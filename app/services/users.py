@@ -126,7 +126,7 @@ class UserService(BaseService):
         
         # Hash the password
         if "password" in user_dict:
-            user_dict["password_hash"] = self.get_password_hash(user_dict.pop("password"))
+            user_dict["hashed_password"] = self.get_password_hash(user_dict.pop("password"))
             
         # Remove confirm_password field as it's not in the database model
         if "confirm_password" in user_dict:

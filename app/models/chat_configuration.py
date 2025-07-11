@@ -1,87 +1,62 @@
-"""Chat Configuration database models."""
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Text, DateTime, JSON, Boolean, Date, UniqueConstraint
+"""Chat Configuration database models - cleaned up version."""
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import JSONB
 from app.db.database import Base
 import uuid
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class ChatStrategy(Base):
     """Chat strategy model for configurable patient screening workflows"""
     __tablename__ = "chat_strategies"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id = Column(String(36), ForeignKey("accounts.id"), nullable=False)
+    name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    goal = Column(Text, nullable=False, default="")  # Required by database
+    goal = Column(Text, nullable=True)
     patient_introduction = Column(Text, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=False)
-    specialty = Column(String, nullable=True)
-    created_by = Column(String, ForeignKey("users.id"), nullable=False)
-    account_id = Column(String, ForeignKey("accounts.id"), nullable=False)
-    version = Column(Integer, nullable=False, default=1)
+    specialty = Column(String(100), nullable=True)
+    system_prompt = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_by = Column(String(36), nullable=True)  # User who created the strategy
+    version = Column(Integer, nullable=False, default=1)  # Version number for strategy revisions
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    creator = relationship("User", foreign_keys=[created_by])
-    account = relationship("Account", foreign_keys=[account_id])
-    knowledge_sources = relationship(
-        "KnowledgeSource", 
-        secondary="strategy_knowledge_sources",
-        back_populates="strategies"
-    )
+    chat_sessions = relationship("AIChatSession", back_populates="strategy")
+    extraction_rules = relationship("ExtractionRule", back_populates="strategy", cascade="all, delete-orphan")
     targeting_rules = relationship("TargetingRule", back_populates="strategy", cascade="all, delete-orphan")
     outcome_actions = relationship("OutcomeAction", back_populates="strategy", cascade="all, delete-orphan")
     executions = relationship("StrategyExecution", back_populates="strategy", cascade="all, delete-orphan")
     analytics = relationship("StrategyAnalytics", back_populates="strategy", cascade="all, delete-orphan")
-    chat_sessions = relationship("ChatSession", back_populates="strategy")
-    chat_questions = relationship("ChatQuestion", back_populates="strategy")
+    knowledge_sources = relationship("StrategyKnowledgeSource", back_populates="strategy", cascade="all, delete-orphan")
 
 
 class KnowledgeSource(Base):
-    """Knowledge source model for guidelines, protocols, and custom documents with hybrid storage"""
+    """Knowledge source model for guidelines, protocols, and custom documents"""
     __tablename__ = "knowledge_sources"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False)  # DB column is 'name' 
-    source_type = Column(String, nullable=False)  # DB column is 'source_type'
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id = Column(String(36), ForeignKey("accounts.id"), nullable=False)
+    name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    
-    # File Storage - existing columns in DB
-    content_type = Column(String, nullable=True)
+    source_type = Column(String(50), nullable=False, default='custom_document')
+    access_level = Column(String(50), nullable=False, default='public')
+    file_path = Column(String(500), nullable=True)
+    content_type = Column(String(100), nullable=True)
     file_size = Column(Integer, nullable=True)
-    file_path = Column(String, nullable=True)
-    s3_bucket = Column(String, nullable=True)
-    s3_key = Column(String, nullable=True)
-    s3_url = Column(String, nullable=True)
-    source_metadata = Column(JSON, nullable=True)  # Renamed from metadata to avoid SQLAlchemy conflicts
-    
-    # Processing status
-    processing_status = Column(String, nullable=False, default='pending')
+    processing_status = Column(String(50), nullable=False, default='pending')
     processing_error = Column(Text, nullable=True)
     processed_at = Column(DateTime, nullable=True)
     content_summary = Column(Text, nullable=True)
-    
-    # Access control
+    created_by = Column(String(36), nullable=True)
+    uploaded_by = Column(String(36), nullable=True)  # Foreign key reference without constraint for now
     is_active = Column(Boolean, nullable=False, default=True)
-    access_level = Column(String, nullable=False, default='private')
-    
-    # Audit fields
-    created_by = Column(String, ForeignKey("users.id"), nullable=False)
-    account_id = Column(String, ForeignKey("accounts.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    creator = relationship("User", foreign_keys=[created_by])
-    account = relationship("Account", foreign_keys=[account_id])
-    strategies = relationship(
-        "ChatStrategy", 
-        secondary="strategy_knowledge_sources",
-        back_populates="knowledge_sources"
-    )
     
     # Properties for compatibility with frontend
     @property
@@ -90,23 +65,7 @@ class KnowledgeSource(Base):
     
     @property
     def type(self):
-        return self.source_type
-    chat_questions = relationship("ChatQuestion", back_populates="knowledge_source")
-
-
-class StrategyKnowledgeSource(Base):
-    """Junction table for many-to-many relationship between strategies and knowledge sources"""
-    __tablename__ = "strategy_knowledge_sources"
-
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    strategy_id = Column(String, ForeignKey("chat_strategies.id", ondelete="CASCADE"), nullable=False)
-    knowledge_source_id = Column(String, ForeignKey("knowledge_sources.id", ondelete="CASCADE"), nullable=False)
-    weight = Column(Float, nullable=True, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        UniqueConstraint('strategy_id', 'knowledge_source_id'),
-    )
+        return self.content_type or 'document'
 
 
 class TargetingRule(Base):
@@ -149,7 +108,7 @@ class StrategyExecution(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     strategy_id = Column(String, ForeignKey("chat_strategies.id"), nullable=False)
-    session_id = Column(String, ForeignKey("chat_sessions.id"), nullable=True)
+    session_id = Column(String, ForeignKey("ai_chat_sessions.id"), nullable=True)
     patient_id = Column(String, ForeignKey("users.id"), nullable=False)
     triggered_by = Column(String, ForeignKey("users.id"), nullable=True)  # Clinician who initiated
     trigger_criteria = Column(JSONB, nullable=True)  # Criteria that triggered this strategy
@@ -162,7 +121,6 @@ class StrategyExecution(Base):
 
     # Relationships
     strategy = relationship("ChatStrategy", back_populates="executions")
-    session = relationship("ChatSession", foreign_keys="ChatSession.strategy_execution_id", back_populates="strategy_execution", uselist=False)
     patient = relationship("User", foreign_keys=[patient_id])
     initiator = relationship("User", foreign_keys=[triggered_by])
 
@@ -190,4 +148,24 @@ class StrategyAnalytics(Base):
 
     __table_args__ = (
         UniqueConstraint('strategy_id', 'date'),
+    )
+
+
+class StrategyKnowledgeSource(Base):
+    """Association model linking strategies to knowledge sources"""
+    __tablename__ = "strategy_knowledge_sources"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    strategy_id = Column(String, ForeignKey("chat_strategies.id", ondelete="CASCADE"), nullable=False)
+    knowledge_source_id = Column(String, ForeignKey("knowledge_sources.id", ondelete="CASCADE"), nullable=False)
+    weight = Column(Float, nullable=False, default=1.0)  # Relevance weight for RAG
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    strategy = relationship("ChatStrategy", back_populates="knowledge_sources")
+    knowledge_source = relationship("KnowledgeSource")
+
+    __table_args__ = (
+        UniqueConstraint('strategy_id', 'knowledge_source_id'),
     )

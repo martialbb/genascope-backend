@@ -30,7 +30,7 @@ def upgrade():
         sa.Column('custom_message', sa.Text, nullable=True),
         sa.Column('session_metadata', sa.JSON, nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
         sa.Column('accepted_at', sa.DateTime(), nullable=True)
     )

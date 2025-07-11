@@ -13,23 +13,21 @@ class Appointment(Base):
     id = Column(String(36), primary_key=True)
     clinician_id = Column(String(36), index=True)
     patient_id = Column(String(36), index=True)
-    date = Column(Date, nullable=False)  # Added for compatibility with repo/service/tests
-    scheduled_at = Column(DateTime, nullable=False)  # Changed from date_time to match actual DB schema
-    time = Column(Time, nullable=False)  # Added for compatibility with service/tests
+    date_time = Column(DateTime, nullable=False)  # Match actual DB schema
     appointment_type = Column(String(20), default="virtual")
     status = Column(String(20), default="scheduled")
     notes = Column(Text, nullable=True)
-    confirmation_code = Column(String(10), nullable=False)  # Added field
+    confirmation_code = Column(String(10), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Availability(Base):
     __tablename__ = "clinician_availability"
 
-    id = Column(String(36), primary_key=True)
-    clinician_id = Column(String(36), index=True)
+    id = Column(Integer, primary_key=True)  # Fixed: DB uses INTEGER with auto-increment
+    clinician_id = Column(String(50), index=True)  # Fixed: DB uses VARCHAR(50)
     date = Column(Date, nullable=False)
-    time = Column(Time, nullable=False)
+    time_slot = Column(String(5), nullable=False)  # Fixed: was 'time', now 'time_slot' VARCHAR(5)
     available = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

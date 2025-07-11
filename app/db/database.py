@@ -11,19 +11,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create base class for ORM models
 Base = declarative_base()
 
-# Import all models to register them with Base
-from app.models.accounts import Account
-from app.models.user import User, PatientProfile
-from app.models.patient import Patient
-from app.models.chat import ChatSession, ChatQuestion, ChatAnswer, RiskAssessment
-from app.models.invite import PatientInvite
-from app.models.appointment import Appointment, Availability, RecurringAvailability
-from app.models.lab import LabOrder, LabResult, LabIntegration
-from app.models.chat_configuration import (
-    ChatStrategy, KnowledgeSource, StrategyKnowledgeSource,
-    TargetingRule, OutcomeAction, StrategyExecution, StrategyAnalytics
-)
-
+# Models are imported in app/models/__init__.py to register them with Base
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()

@@ -17,13 +17,13 @@ BASE_URL = "http://localhost:8000"
 API_BASE = f"{BASE_URL}/api/v1/chat-configuration"
 
 # Test authentication token (should be valid for testing)
-TEST_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB0ZXN0LmNvbSIsImlkIjoiZmZlN2QzNTUtZGY1MC00NWE2LTlmYzAtMzhiOWYxYjM0ODZmIiwicm9sZSI6ImFkbWluIiwiZXhwIjoxNzUwODM2NzA4fQ.GlZp2TdQeVBnQnOFFxW8c2KgZD78m0mDX-dTTV0pZT4"
+TEST_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB0ZXN0LmNvbSIsImlkIjoiOWJjYjIxOGQtYTk2My00ZWVjLWIxYzUtYmY5MWJiMDQwYWI4Iiwicm9sZSI6ImFkbWluIiwiZXhwIjoxNzUxNzYyMDQ4fQ.11-cNUZ39yQyw5LYmG0aKnLElNWSpvJ-K-2kj3O4wqI"
 
 def get_fresh_token() -> str:
     """Generate a fresh authentication token for testing."""
     login_data = {
         'username': 'admin@test.com',
-        'password': 'admin123'
+        'password': 'test123'
     }
     
     try:
@@ -176,7 +176,7 @@ class TestChatConfigurationE2E:
         # Verify created strategy structure and basic fields
         assert created_strategy["name"] == strategy_data["name"]
         assert created_strategy["description"] == strategy_data["description"]
-        assert created_strategy["is_active"] == False  # Default value
+        assert created_strategy["is_active"] == True  # Default value should be True for new strategies
         assert "id" in created_strategy
         assert "created_at" in created_strategy
         

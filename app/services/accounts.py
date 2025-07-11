@@ -27,26 +27,17 @@ class AccountService:
         """Get account by ID"""
         return self.account_repository.get_by_id(account_id)
 
-    def get_account_by_domain(self, domain: str) -> Optional[Account]:
-        """Get account by domain"""
-        return self.account_repository.get_account_by_domain(domain)
-
     def create_account(self, account_data: AccountCreate) -> Account:
         """Create a new account and its admin user"""
         # Validate passwords match
         if not account_data.validate_passwords_match():
             raise ValueError("Passwords do not match")
 
-        # Check if domain already exists
-        existing_account = self.get_account_by_domain(account_data.domain)
-        if existing_account:
-            raise ValueError(f"Account with domain '{account_data.domain}' already exists")
-
         # Create the account using repository
         account_dict = {
             "name": account_data.name,
             "domain": account_data.domain,
-            "is_active": True
+            "status": "active"
         }
         db_account = self.account_repository.create_account(account_dict)
 

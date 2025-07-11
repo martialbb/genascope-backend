@@ -75,7 +75,15 @@ class InviteService(BaseService):
         send_email = invite_data.pop("send_email", True)
         
         # Create the invite with only valid PatientInvite model fields
-        invite = self.invite_repository.create_invite(invite_data)
+        # Filter out fields that don't belong to the PatientInvite model
+        valid_invite_fields = {
+            "patient_id", "email", "invite_token", "clinician_id", "status", 
+            "custom_message", "session_metadata", "expires_at", "accepted_at", "user_id"
+        }
+        
+        filtered_invite_data = {k: v for k, v in invite_data.items() if k in valid_invite_fields}
+        
+        invite = self.invite_repository.create_invite(filtered_invite_data)
         
         # Send email notification
         if invite and send_email:

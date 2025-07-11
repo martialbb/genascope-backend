@@ -97,7 +97,7 @@ async def order_test(
         
         # Get patient and clinician names
         patient = lab_service.user_repository.get_by_id(order.patient_id)
-        clinician = lab_service.user_repository.get_by_id(order.clinician_id)
+        clinician = lab_service.user_repository.get_by_id(order.ordered_by)  # Fixed: use ordered_by
         
         # Convert DB status to schema enum
         status_map = {
@@ -116,7 +116,8 @@ async def order_test(
         
         # Format scheduled date
         scheduled_date = None
-        if order.requisition_details and "scheduled_date" in order.requisition_details:
+        # Note: requisition_details field does not exist in current schema
+        if False: # order.requisition_details and "scheduled_date" in order.requisition_details:
             from datetime import datetime
             try:
                 scheduled_date = datetime.fromisoformat(order.requisition_details["scheduled_date"]).date()
@@ -127,13 +128,13 @@ async def order_test(
             order_id=order.id,
             patient_id=order.patient_id,
             test_type=test_type,
-            clinician_id=order.clinician_id,
-            notes=order.notes,
+            clinician_id=order.ordered_by,  # Fixed: use ordered_by
+            notes=getattr(order, 'notes', ''),  # Handle missing notes field
             status=order_status,
             ordered_at=order.created_at,
             scheduled_date=scheduled_date,
-            completed_at=order.completed_date,
-            patient_name=patient.name if patient else "Unknown Patient",
+            completed_at=getattr(order, 'completed_date', None),  # Handle missing completed_date field
+            patient_name=f"{patient.first_name} {patient.last_name}" if patient else "Unknown Patient",
             clinician_name=clinician.name if clinician else "Unknown Provider"
         )
     
@@ -166,7 +167,7 @@ async def get_results(
     
     # Check if user has permission to access these results
     if (current_user.id != order.patient_id and  # Not the patient
-        current_user.id != order.clinician_id and  # Not the ordering clinician
+        current_user.id != order.ordered_by and  # Not the ordering clinician (Fixed: use ordered_by)
         current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]):  # Not an admin
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -243,8 +244,8 @@ async def get_patient_orders(
     response_orders = []
     for order in orders:
         # Get patient and clinician names
-        patient = lab_service.user_repository.get_by_id(order.patient_id)
-        clinician = lab_service.user_repository.get_by_id(order.clinician_id)
+        patient = lab_service.patient_repository.get_by_id(order.patient_id)
+        clinician = lab_service.user_repository.get_by_id(order.ordered_by)  # Fixed: use ordered_by
         
         # Map DB status to schema status
         status_map = {
@@ -263,7 +264,8 @@ async def get_patient_orders(
         
         # Format scheduled date
         scheduled_date = None
-        if order.requisition_details and "scheduled_date" in order.requisition_details:
+        # Note: requisition_details field does not exist in current schema
+        if False: # order.requisition_details and "scheduled_date" in order.requisition_details:
             from datetime import datetime
             try:
                 scheduled_date = datetime.fromisoformat(order.requisition_details["scheduled_date"]).date()
@@ -273,14 +275,14 @@ async def get_patient_orders(
         response_orders.append(LabOrderResponse(
             order_id=order.id,
             patient_id=order.patient_id,
-            test_type=order.test_type,
-            clinician_id=order.clinician_id,
-            notes=order.notes,
+            test_type=getattr(order, 'order_type', 'unknown'),
+            clinician_id=order.ordered_by,
+            notes=getattr(order, 'notes', ''),
             status=order_status,
             ordered_at=order.created_at,
             scheduled_date=scheduled_date,
-            completed_at=order.completed_date,
-            patient_name=patient.name if patient else "Unknown Patient",
+            completed_at=getattr(order, 'completed_date', None),
+            patient_name=f"{patient.first_name} {patient.last_name}" if patient else "Unknown Patient",
             clinician_name=clinician.name if clinician else "Unknown Provider"
         ))
     
@@ -310,8 +312,8 @@ async def get_clinician_orders(
     response_orders = []
     for order in orders:
         # Get patient and clinician names
-        patient = lab_service.user_repository.get_by_id(order.patient_id)
-        clinician = lab_service.user_repository.get_by_id(order.clinician_id)
+        patient = lab_service.patient_repository.get_by_id(order.patient_id)
+        clinician = lab_service.user_repository.get_by_id(order.ordered_by)  # Fixed: use ordered_by
         
         # Map DB status to schema status
         status_map = {
@@ -330,7 +332,8 @@ async def get_clinician_orders(
         
         # Format scheduled date
         scheduled_date = None
-        if order.requisition_details and "scheduled_date" in order.requisition_details:
+        # Note: requisition_details field does not exist in current schema
+        if False: # order.requisition_details and "scheduled_date" in order.requisition_details:
             from datetime import datetime
             try:
                 scheduled_date = datetime.fromisoformat(order.requisition_details["scheduled_date"]).date()
@@ -340,14 +343,14 @@ async def get_clinician_orders(
         response_orders.append(LabOrderResponse(
             order_id=order.id,
             patient_id=order.patient_id,
-            test_type=order.test_type,
-            clinician_id=order.clinician_id,
-            notes=order.notes,
+            test_type=getattr(order, 'order_type', 'unknown'),
+            clinician_id=order.ordered_by,
+            notes=getattr(order, 'notes', ''),
             status=order_status,
             ordered_at=order.created_at,
             scheduled_date=scheduled_date,
-            completed_at=order.completed_date,
-            patient_name=patient.name if patient else "Unknown Patient",
+            completed_at=getattr(order, 'completed_date', None),
+            patient_name=f"{patient.first_name} {patient.last_name}" if patient else "Unknown Patient",
             clinician_name=clinician.name if clinician else "Unknown Provider"
         ))
     
@@ -388,7 +391,7 @@ async def review_result(
         )
     
     # Check if clinician is authorized to review this result
-    if current_user.id != order.clinician_id and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if current_user.id != order.ordered_by and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:  # Fixed: use ordered_by
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to review this result"

@@ -44,7 +44,8 @@ class Patient(Base):
     account = relationship("Account", backref="patients")
     
     # Relationships with other models
-    # chat_sessions = relationship("ChatSession", back_populates="patient", cascade="all, delete-orphan")
+    # chat_sessions = relationship("ChatSession", back_populates="patient", cascade="all, delete-orphan")  # Old chat system
+    chat_sessions = relationship("AIChatSession", back_populates="patient", cascade="all, delete-orphan")  # AI chat system
     # Using string lookup for related class to avoid circular imports
     invites = relationship("PatientInvite", back_populates="patient", cascade="all, delete-orphan")
     

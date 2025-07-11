@@ -22,14 +22,12 @@ class AccountRepository(BaseRepository[Account, AccountCreate, AccountUpdate]):
             filters["name"] = {"like": name}
         return self.get_all(skip=skip, limit=limit, **filters)
 
-    def get_account_by_domain(self, domain: str) -> Optional[Account]:
-        """Get account by domain"""
-        return self.get_by_attribute("domain", domain)
-
     def create_account(self, account_data: Dict[str, Any]) -> Account:
         """Create a new account with timestamp"""
         if "created_at" not in account_data:
             account_data["created_at"] = datetime.utcnow()
+        if "updated_at" not in account_data:
+            account_data["updated_at"] = datetime.utcnow()
         return self.create(account_data)
 
     def update_account(self, account_id: str, account_data: Dict[str, Any]) -> Optional[Account]:
