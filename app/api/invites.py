@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request, Query
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 import traceback
+from datetime import datetime, timedelta
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import get_current_active_user, User, create_access_token
 from app.services.invites import InviteService
 from app.services.users import UserService
 from app.services.patients import PatientService
@@ -11,7 +12,7 @@ from app.models.user import UserRole
 from app.schemas.invites import (
     PatientInviteCreate, PatientInviteResponse, BulkInviteCreate, BulkInviteResponse,
     InviteResend, InviteVerification, InviteVerificationResponse, PatientRegistration,
-    InviteStatus, InviteListResponse, InviteListParams
+    InviteStatus, InviteListResponse, InviteListParams, SimplifiedPatientAccess, SimplifiedAccessResponse
 )
 from app.schemas.users import UserResponse
 from app.schemas.common import SuccessResponse
@@ -69,12 +70,8 @@ async def generate_invite(
     try:
         patient_data = patient_service.get_patient_with_invite_status(invite_data.patient_id)
         
-        # Check if patient already has a pending invite
-        if patient_data["has_pending_invite"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Patient already has a pending invite"
-            )
+        # Note: We no longer block multiple invites here since patients can have 
+        # multiple invites with different chat strategies
     except HTTPException as e:
         if e.status_code == 404:
             raise HTTPException(
@@ -88,6 +85,7 @@ async def generate_invite(
         "patient_id": invite_data.patient_id,
         "email": patient_data["email"],  # Use email from patient record
         "clinician_id": provider_id,
+        "chat_strategy_id": invite_data.chat_strategy_id,
         "custom_message": invite_data.custom_message
     }
     
@@ -169,13 +167,8 @@ async def bulk_invite(
             # Get patient data to verify it exists
             patient_data = patient_service.get_patient_with_invite_status(patient_invite.patient_id)
             
-            # Skip patients who already have pending invites
-            if patient_data["has_pending_invite"]:
-                failed_invites.append({
-                    "data": {"patient_id": patient_invite.patient_id},
-                    "error": "Patient already has a pending invite"
-                })
-                continue
+            # Note: We no longer skip patients with pending invites here since patients 
+            # can have multiple invites with different chat strategies
                 
             # Create invitation data
             invite_data = {
@@ -185,9 +178,18 @@ async def bulk_invite(
                 "last_name": patient_data["last_name"],
                 "phone": patient_data["phone"],
                 "clinician_id": patient_invite.provider_id or current_user.id,
+                "chat_strategy_id": patient_invite.chat_strategy_id or bulk_data.default_chat_strategy_id,
                 "custom_message": patient_invite.custom_message or bulk_data.custom_message,
                 "expires_at": datetime.utcnow() + timedelta(days=patient_invite.expiry_days)
             }
+            
+            # Validate that chat_strategy_id is provided
+            if not invite_data["chat_strategy_id"]:
+                failed_invites.append({
+                    "data": {"patient_id": patient_invite.patient_id},
+                    "error": "chat_strategy_id is required either per patient or as default_chat_strategy_id"
+                })
+                continue
             invite_data_list.append(invite_data)
         except HTTPException as e:
             failed_invites.append({
@@ -386,6 +388,93 @@ async def register_patient(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to register patient: {str(e)}"
+        )
+
+@router.post("/simplified_access", response_model=SimplifiedAccessResponse)
+async def simplified_patient_access(
+    access_data: SimplifiedPatientAccess,
+    db: Session = Depends(get_db)
+):
+    """
+    Simplified patient access using basic information only.
+    Patients can access chat interface with first name, last name, date of birth,
+    and agreement to terms & privacy policy - no password required.
+    """
+    invite_service = InviteService(db)
+    patient_service = PatientService(db)
+    
+    try:
+        # Verify the invite token first
+        valid, invite, error_message = invite_service.verify_invite(access_data.invite_token)
+        
+        if not valid or not invite:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message or "Invalid or expired invite"
+            )
+        
+        # Get the patient associated with this invite
+        if not invite.patient:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No patient associated with this invite"
+            )
+        
+        patient = invite.patient
+        
+        # Verify patient information matches
+        if (patient.first_name.lower() != access_data.first_name.lower() or
+            patient.last_name.lower() != access_data.last_name.lower()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patient information does not match"
+            )
+        
+        # Verify date of birth if patient has one
+        if patient.date_of_birth:
+            patient_dob_str = patient.date_of_birth.strftime("%Y-%m-%d")
+            if patient_dob_str != access_data.date_of_birth:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Date of birth does not match"
+                )
+        
+        # Mark the invite as accessed (but not fully accepted like password registration)
+        # Create a temporary access session
+        invite_service.mark_invite_accessed(invite.id)
+        
+        # Generate JWT token for simplified access
+        # Use a shorter expiration time for simplified access (4 hours instead of 24)
+        token_data = {
+            "sub": patient.id,  # Use patient ID as subject, not email
+            "email": patient.email,  # Keep email separate for reference
+            "id": patient.id,
+            "role": "patient",
+            "access_type": "simplified",  # Mark this as simplified access
+            "invite_id": invite.id
+        }
+        
+        access_token = create_access_token(
+            data=token_data,
+            expires_delta=timedelta(hours=4)  # Shorter session for simplified access
+        )
+        
+        return SimplifiedAccessResponse(
+            access_token=access_token,
+            token_type="bearer",
+            patient_id=patient.id,
+            patient_name=f"{patient.first_name} {patient.last_name}",
+            expires_in=14400  # 4 hours in seconds
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"Error in simplified_access: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to authenticate patient: {str(e)}"
         )
 
 @router.get("/pending/{clinician_id}", response_model=List[PatientInviteResponse])
@@ -781,6 +870,112 @@ async def resend_specific_invite(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to resend invite: {str(e)}"
+        )
+
+@router.get("/patients/{patient_id}/invites", response_model=List[PatientInviteResponse])
+async def get_patient_invites(
+    patient_id: str,
+    invite_status: Optional[str] = Query(None, alias="status", description="Filter by invite status: pending, accepted, expired, revoked"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all invites for a specific patient
+    
+    This endpoint allows authorized users to view all invitation history for a patient,
+    optionally filtered by status. Useful for tracking patient engagement and invite management.
+    """
+    invite_service = InviteService(db)
+    patient_service = PatientService(db)
+    user_service = UserService(db)
+    
+    # Verify patient exists first
+    try:
+        patient_data = patient_service.get_patient_with_invite_status(patient_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Patient not found"
+            )
+        raise e
+    
+    # Check role-based permissions
+    if current_user.role == UserRole.SUPER_ADMIN:
+        # Super admins can view all patient invites
+        pass
+    elif current_user.role == UserRole.ADMIN:
+        # Regular admins can only view invites for patients in their account
+        if not current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not associated with any organization"
+            )
+        
+        # Verify the patient belongs to the admin's account
+        if patient_data.get("account_id") != current_user.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view invites for patients outside your organization"
+            )
+    elif current_user.role == UserRole.CLINICIAN:
+        # Clinicians can view invites for their assigned patients
+        if patient_data.get("clinician_id") != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view invites for patients not assigned to you"
+            )
+    elif current_user.role == UserRole.PATIENT and current_user.is_simplified_access:
+        # Simplified access patients can only view their own invites
+        if patient_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view other patients' invites"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view patient invites"
+        )
+    
+    # Get invites for the patient
+    try:
+        invites = invite_service.get_invites_by_patient(patient_id, invite_status)
+        
+        # Convert to response format
+        invite_responses = []
+        
+        for invite in invites:
+            # Generate invite URL
+            invite_url = invite_service.generate_invite_url(invite)
+            
+            # Get provider name
+            provider = user_service.get_user_by_id(invite.clinician_id)
+            provider_name = provider.name if provider else "Unknown Provider"
+            
+            invite_responses.append(PatientInviteResponse(
+                invite_id=str(invite.id),
+                email=invite.email,
+                first_name=invite.patient.first_name if invite.patient else "",
+                last_name=invite.patient.last_name if invite.patient else "",
+                phone=invite.patient.phone if invite.patient else None,
+                invite_url=invite_url,
+                provider_id=invite.clinician_id,
+                provider_name=provider_name,
+                status=InviteStatus(invite.status),
+                created_at=invite.created_at,
+                expires_at=invite.expires_at,
+                accepted_at=invite.accepted_at
+            ))
+        
+        return invite_responses
+        
+    except Exception as e:
+        print(f"Error getting patient invites: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve patient invites: {str(e)}"
         )
 
 @router.get("/clinicians", response_model=List[UserResponse])

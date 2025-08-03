@@ -1,5 +1,5 @@
 """Patient invite database models."""
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON, Integer
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 import uuid
@@ -15,6 +15,7 @@ class PatientInvite(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=True)  # Match database column name
     patient_id = Column(String, ForeignKey("patients.id"), nullable=False)  # Link to pre-created patient
+    chat_strategy_id = Column(String, ForeignKey("chat_strategies.id"), nullable=False)  # Required chat strategy
     email = Column(String, nullable=False, index=True)  # Redundant with patient.email but kept for performance
     invite_token = Column(String, nullable=False, unique=True)
     clinician_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -25,9 +26,12 @@ class PatientInvite(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
     accepted_at = Column(DateTime, nullable=True)
+    last_accessed = Column(DateTime, nullable=True)  # Track when invite was last accessed via simplified flow
+    access_count = Column(Integer, nullable=True, default=0)  # Track how many times accessed
 
     # Relationships
     user = relationship("User", foreign_keys=[user_id])  # Match database column name
     clinician = relationship("User", foreign_keys=[clinician_id], backref="sent_invites")
+    chat_strategy = relationship("ChatStrategy", foreign_keys=[chat_strategy_id])
     # Using string lookup for related class to avoid circular imports
     patient = relationship("Patient", foreign_keys=[patient_id], back_populates="invites")

@@ -36,7 +36,7 @@ class InviteService(BaseService):
         """
         Create a new patient invitation
         
-        This function now expects a patient_id in the invite_data
+        This function now expects a patient_id and chat_strategy_id in the invite_data
         """
         # Check if clinician exists
         clinician = self.user_repository.get_by_id(invite_data["clinician_id"])
@@ -48,6 +48,21 @@ class InviteService(BaseService):
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
             
+        # Validate chat strategy exists and is accessible
+        if "chat_strategy_id" not in invite_data:
+            raise HTTPException(status_code=400, detail="chat_strategy_id is required")
+            
+        # Import here to avoid circular imports
+        from app.repositories.chat_configuration import ChatStrategyRepository
+        chat_strategy_repo = ChatStrategyRepository(self.db)
+        chat_strategy = chat_strategy_repo.get_by_id(invite_data["chat_strategy_id"])
+        
+        if not chat_strategy:
+            raise HTTPException(status_code=404, detail="Chat strategy not found")
+            
+        if not chat_strategy.is_active:
+            raise HTTPException(status_code=400, detail="Chat strategy is not active")
+            
         # Validate patient has a valid email address
         if not patient.email:
             raise HTTPException(
@@ -58,17 +73,22 @@ class InviteService(BaseService):
         # Set email from patient (for consistency)
         invite_data["email"] = patient.email
         
-        # Check if there's already an active invite for this patient
+        # Check if there's already an active invite for this patient with the same chat strategy
         active_invites = self.invite_repository.get_by_email(patient.email)
-        active_invite = next((i for i in active_invites if i.status == "pending" and i.expires_at > datetime.utcnow()), None)
+        active_invite_same_strategy = next((
+            i for i in active_invites 
+            if i.status == "pending" 
+            and i.expires_at > datetime.utcnow() 
+            and i.chat_strategy_id == invite_data["chat_strategy_id"]
+        ), None)
         
-        if active_invite:
-            # If it's from the same clinician, return the existing invite
-            if active_invite.clinician_id == invite_data["clinician_id"]:
-                return active_invite
+        if active_invite_same_strategy:
+            # If it's from the same clinician and same strategy, return the existing invite
+            if active_invite_same_strategy.clinician_id == invite_data["clinician_id"]:
+                return active_invite_same_strategy
             
-            # Otherwise, revoke the old one
-            self.invite_repository.revoke_invite(active_invite.id)
+            # If different clinician but same strategy, revoke the old one
+            self.invite_repository.revoke_invite(active_invite_same_strategy.id)
         
         # Create a new invite
         # Extract send_email flag before creating the invite
@@ -78,7 +98,7 @@ class InviteService(BaseService):
         # Filter out fields that don't belong to the PatientInvite model
         valid_invite_fields = {
             "patient_id", "email", "invite_token", "clinician_id", "status", 
-            "custom_message", "session_metadata", "expires_at", "accepted_at", "user_id"
+            "custom_message", "session_metadata", "expires_at", "accepted_at", "user_id", "chat_strategy_id"
         }
         
         filtered_invite_data = {k: v for k, v in invite_data.items() if k in valid_invite_fields}
@@ -190,6 +210,28 @@ class InviteService(BaseService):
         )
         
         return user_account
+    
+    def mark_invite_accessed(self, invite_id: str) -> PatientInvite:
+        """
+        Mark an invite as accessed (for simplified access without full registration)
+        """
+        invite = self.invite_repository.get_by_id(invite_id)
+        
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invite not found")
+        
+        # Update the invite to track that it was accessed
+        # We don't mark it as "accepted" like in full registration, but track access
+        current_time = datetime.utcnow()
+        updated_invite = self.invite_repository.update_invite(
+            invite_id,
+            {
+                "last_accessed": current_time,
+                "access_count": (invite.access_count or 0) + 1
+            }
+        )
+        
+        return updated_invite
     
     def resend_invite(self, invite_id: str, custom_message: Optional[str] = None) -> PatientInvite:
         """
@@ -353,3 +395,22 @@ class InviteService(BaseService):
             List of PatientInvite objects
         """
         return self.invite_repository.get_invites_by_clinician(clinician_id, status)
+    
+    def get_invites_by_patient(self, patient_id: str, status: Optional[str] = None) -> List[PatientInvite]:
+        """
+        Get all invites for a specific patient, optionally filtered by status
+        
+        Args:
+            patient_id: The patient's ID
+            status: Optional status filter ('pending', 'accepted', 'expired', 'revoked')
+            
+        Returns:
+            List of PatientInvite objects
+        """
+        invites = self.invite_repository.get_by_patient_id(patient_id)
+        
+        # Filter by status if provided
+        if status:
+            invites = [invite for invite in invites if invite.status == status]
+            
+        return invites

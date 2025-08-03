@@ -30,6 +30,7 @@ class PatientInviteCreate(BaseModel):
     """Schema for patient invitation creation"""
     provider_id: str
     patient_id: str  # Link to pre-created patient
+    chat_strategy_id: str  # Required chat strategy for the patient interaction
     send_email: bool = True
     custom_message: Optional[str] = None
     expiry_days: int = 14
@@ -53,6 +54,7 @@ class PatientInviteForBulk(BaseModel):
     """Schema for patient data in bulk invitation requests"""
     patient_id: str
     provider_id: Optional[str] = None
+    chat_strategy_id: str  # Required chat strategy for each patient
     custom_message: Optional[str] = None
     expiry_days: int = 14
 
@@ -60,6 +62,7 @@ class PatientInviteForBulk(BaseModel):
 class BulkInviteCreate(BaseModel):
     """Schema for creating multiple invitations at once"""
     patients: List[PatientInviteForBulk]
+    default_chat_strategy_id: Optional[str] = None  # Default strategy for all patients if not specified individually
     send_emails: bool = True
     custom_message: Optional[str] = None
 
@@ -113,6 +116,37 @@ class PatientRegistration(BaseModel):
         if not v:
             raise ValueError('must agree to terms and conditions')
         return v
+
+
+class SimplifiedPatientAccess(BaseModel):
+    """Schema for simplified patient access using only basic information"""
+    invite_token: str
+    first_name: str
+    last_name: str
+    date_of_birth: str  # ISO format date: YYYY-MM-DD
+    agree_to_terms: bool = False
+    agree_to_privacy: bool = False
+    
+    @field_validator('agree_to_terms')
+    def must_agree_to_terms(cls, v):
+        if not v:
+            raise ValueError('must agree to terms and conditions')
+        return v
+        
+    @field_validator('agree_to_privacy')
+    def must_agree_to_privacy(cls, v):
+        if not v:
+            raise ValueError('must agree to privacy policy')
+        return v
+
+
+class SimplifiedAccessResponse(BaseModel):
+    """Schema for simplified patient access response"""
+    access_token: str
+    token_type: str = "bearer"
+    patient_id: str
+    patient_name: str
+    expires_in: int = 86400  # 24 hours
 
 
 class InviteListParams(BaseModel):
