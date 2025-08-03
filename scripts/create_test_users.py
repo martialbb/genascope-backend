@@ -71,6 +71,15 @@ def create_test_users(db: Session):
             "description": "Organization administrator"
         },
         {
+            "id": "admin-test-001", 
+            "email": "admin@test.com",
+            "name": "Test Admin",
+            "role": UserRole.ADMIN,
+            "password": "test123",
+            "account_id": account.id,
+            "description": "Simple test admin for quick development login"
+        },
+        {
             "id": "clinician-001",
             "email": "clinician@testhospital.com", 
             "name": "Dr. Jane Smith",

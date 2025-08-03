@@ -24,7 +24,7 @@ class User:
     def __init__(self, username: str, email: Optional[str] = None, 
                  full_name: Optional[str] = None, disabled: Optional[bool] = None,
                  user_id: Optional[str] = None, role: Optional[str] = None,
-                 account_id: Optional[str] = None):
+                 account_id: Optional[str] = None, is_simplified_access: Optional[bool] = False):
         self.username = username
         self.email = email or username
         self.full_name = full_name
@@ -32,9 +32,10 @@ class User:
         self.id = user_id
         self.role = role  # Make sure role is properly initialized
         self.account_id = account_id  # Add account_id attribute
+        self.is_simplified_access = is_simplified_access  # Track simplified access
 
     def __str__(self):
-        return f"User(id={self.id}, username={self.username}, role={self.role}, account_id={self.account_id})"
+        return f"User(id={self.id}, username={self.username}, role={self.role}, account_id={self.account_id}, simplified={self.is_simplified_access})"
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token"""
@@ -55,10 +56,38 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")  # Use 'sub' for email
+        email: str = payload.get("sub")  # This might be email or patient_id for simplified access
         user_id: str = payload.get("id")
+        access_type: str = payload.get("access_type")  # Check if this is simplified access
         
-        if email is None or user_id is None:
+        if user_id is None:
+            raise credentials_exception
+            
+        # Handle simplified patient access
+        if access_type == "simplified":
+            # For simplified access, we create a user object from patient data
+            # The sub field contains the patient ID, not email
+            from app.services.patients import PatientService
+            patient_service = PatientService(db)
+            patient = patient_service.patient_repository.get_by_id(user_id)
+            
+            if patient is None:
+                raise credentials_exception
+                
+            # Create a user-like object for simplified patient access
+            return User(
+                username=patient.email or f"patient_{patient.id}",
+                email=patient.email or f"patient_{patient.id}@temp.com",
+                full_name=f"{patient.first_name} {patient.last_name}",
+                disabled=patient.status != "active",
+                user_id=patient.id,
+                role="patient",
+                account_id=patient.account_id,
+                is_simplified_access=True
+            )
+        
+        # Regular user authentication - email should be provided
+        if email is None:
             raise credentials_exception
             
         token_data = TokenData(email=email, user_id=user_id)
@@ -77,7 +106,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             disabled=not db_user.is_active,
             user_id=db_user.id,
             role=db_user.role,
-            account_id=db_user.account_id
+            account_id=db_user.account_id,
+            is_simplified_access=False
         )
 
     except JWTError as e:
