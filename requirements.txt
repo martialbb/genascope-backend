@@ -11,6 +11,9 @@ python-multipart>=0.0.6
 # PostgreSQL support (replacing PyMySQL)
 psycopg2-binary>=2.9.7
 
+# Vector database support
+pgvector>=0.2.4
+
 # Storage clients
 minio>=7.1.0
 boto3>=1.26.0
