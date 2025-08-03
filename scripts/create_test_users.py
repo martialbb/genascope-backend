@@ -23,6 +23,14 @@ from app.services.users import UserService
 import uuid
 from datetime import datetime
 
+# Import all models to ensure they're registered with SQLAlchemy
+try:
+    from app.models import *  # This imports all models including ChatStrategy
+    print("✅ All models imported successfully")
+except ImportError as e:
+    print(f"⚠️  Warning: Could not import all models: {e}")
+    print("   Continuing with available models...")
+
 def create_test_account(db: Session) -> Account:
     """Create a test account for the test users"""
     account_data = {
@@ -179,6 +187,7 @@ def print_test_credentials(users):
                 test_passwords = {
                     "superadmin@genascope.com": "SuperAdmin123!",
                     "admin@testhospital.com": "Admin123!",
+                    "admin@test.com": "test123",
                     "clinician@testhospital.com": "Clinician123!",
                     "clinician2@testhospital.com": "Clinician123!",
                     "labtech@testhospital.com": "LabTech123!",
@@ -212,6 +221,10 @@ def main():
         print("✅ Test user creation completed successfully!")
         print("\n💡 Use these credentials to test different user roles and features.")
         print("💡 All passwords follow the pattern: [Role]123! (e.g., Admin123!)")
+        print("\n🎯 QUICK LOGIN FOR DEVELOPMENT:")
+        print("   Email: admin@test.com")
+        print("   Password: test123")
+        print("   → Simple credentials for immediate testing and development")
         
     except Exception as e:
         print(f"❌ Error creating test users: {str(e)}")
