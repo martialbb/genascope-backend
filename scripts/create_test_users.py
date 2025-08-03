@@ -18,7 +18,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from sqlalchemy.orm import Session
 from app.db.database import get_db, engine
-from app.models.user import User, Account, UserRole
+from app.models.user import User, UserRole
+from app.models.accounts import Account
 from app.services.users import UserService
 import uuid
 from datetime import datetime
@@ -37,7 +38,7 @@ def create_test_account(db: Session) -> Account:
         "id": "test-account-001",
         "name": "Test Hospital System",
         "domain": "testhospital.com",
-        "is_active": True
+        "status": "active"  # Use 'status' instead of 'is_active'
     }
     
     # Check if account already exists
