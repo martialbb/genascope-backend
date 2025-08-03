@@ -38,7 +38,9 @@ def create_test_account(db: Session) -> Account:
         "id": "test-account-001",
         "name": "Test Hospital System",
         "domain": "testhospital.com",
-        "status": "active"  # Use 'status' instead of 'is_active'
+        "status": "active",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
     }
     
     # Check if account already exists
