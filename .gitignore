@@ -1,3 +1,11 @@
+# Environment files - CRITICAL SECURITY: Never commit these!
+.env
+.env.local
+.env.production
+.env.*.local
+.env.test
+.env.development
+
 # Python
 __pycache__/
 *.py[cod]
