@@ -12,8 +12,11 @@ from .users import router as users_router
 from .patients import router as patients_router
 from .v1.chat_configuration_sync import router as chat_configuration_router
 from .ai_chat import router as ai_chat_router
+from .health import router as health_router
 
 api_router = APIRouter()
+# Health checks (no prefix for easy monitoring)
+api_router.include_router(health_router)
 # api_router.include_router(chat_router)  # DEPRECATED: Use ai_chat instead
 api_router.include_router(eligibility_router)  # UPDATED: Now compatible with new AI chat system
 api_router.include_router(auth_router)

@@ -1,0 +1,68 @@
+app = "genascope-backend"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8080"
+  ENVIRONMENT = "production"
+  STORAGE_PROVIDER = "s3"
+  AWS_REGION = "us-west-2"
+  FRONTEND_URL = "https://your-frontend-app.fly.dev"
+  EMAIL_ENABLED = "true"
+  PGVECTOR_EXTENSION_ENABLED = "true"
+  
+  # AI Configuration
+  OPENAI_MODEL = "gpt-4"
+  OPENAI_TEMPERATURE = "0.7"
+  OPENAI_MAX_TOKENS = "500"
+  OPENAI_EMBEDDING_MODEL = "text-embedding-ada-002"
+  
+  # Chat Configuration
+  MAX_CONVERSATION_TURNS = "20"
+  SESSION_TIMEOUT_HOURS = "24"
+  MAX_MESSAGE_LENGTH = "2000"
+  
+  # Security
+  ANONYMIZE_BEFORE_AI = "true"
+  MASK_PII = "true"
+  ENABLE_AUDIT_LOGGING = "true"
+  
+  # Vector Embeddings
+  CHUNK_SIZE = "1000"
+  CHUNK_OVERLAP = "200"
+  SIMILARITY_THRESHOLD = "0.7"
+  
+  # External Tools
+  ENABLE_MOCK_CALCULATORS = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    grace_period = "5s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "10s"
+    [http_service.checks.headers]
+      Content-Type = "application/json"
+
+[http_service.concurrency]
+  type = "connections"
+  hard_limit = 25
+  soft_limit = 20
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[deploy]
+  release_command = "alembic upgrade head"
