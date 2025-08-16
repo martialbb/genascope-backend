@@ -18,8 +18,8 @@ fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url with DATABASE_URI from settings
-config.set_main_option('sqlalchemy.url', settings.DATABASE_URI)
+# Override sqlalchemy.url with database_url from settings (handles both local and production)
+config.set_main_option('sqlalchemy.url', settings.database_url)
 
 def run_migrations_offline():
     context.configure(

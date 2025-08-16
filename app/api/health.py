@@ -31,8 +31,9 @@ async def health_check():
         # Check database connection
         try:
             from app.db.database import engine
+            from sqlalchemy import text
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                conn.execute(text("SELECT 1"))
             health_data["database_connected"] = True
             health_data["services"]["database"] = "connected"
         except Exception as e:
@@ -83,8 +84,9 @@ async def readiness_check():
     try:
         # Check if essential services are ready
         from app.db.database import engine
+        from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return {"status": "ready"}
     except Exception as e:
         return {"status": "not ready", "error": str(e)}, 503

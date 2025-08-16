@@ -7,15 +7,16 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     postgresql-client \
     build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy all requirements files
 COPY requirements.txt requirements.ai-chat.txt requirements.postgresql.txt ./
 
-# Install all Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir -r requirements.postgresql.txt \
-    && pip install --no-cache-dir -r requirements.ai-chat.txt
+# Install all Python dependencies with verbose output
+RUN pip install --no-cache-dir --verbose -r requirements.txt \
+    && pip install --no-cache-dir --verbose -r requirements.postgresql.txt \
+    && pip install --no-cache-dir --verbose -r requirements.ai-chat.txt
 
 # Copy application code
 COPY . .

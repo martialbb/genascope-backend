@@ -2,8 +2,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
 
-# Create engine with URL from settings
-engine = create_engine(settings.DATABASE_URI)
+# Create engine with URL from settings (handles both local and production)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,  # Enable connection health checks
+    pool_recycle=300,    # Recycle connections every 5 minutes
+    echo=False          # Set to True for SQL debugging
+)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
