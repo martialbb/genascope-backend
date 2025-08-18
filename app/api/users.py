@@ -83,6 +83,20 @@ async def get_users(
     from app.schemas.users import UserResponse
     return [UserResponse.model_validate(user) for user in users]
 
+# Add explicit route without trailing slash to handle frontend requests
+@router.get("", response_model=List[UserResponse], summary="List Users (No Slash)")
+async def get_users_no_slash(
+    role: Optional[str] = Query(None, description="Filter users by role (e.g., admin, clinician, patient)"),
+    account_id: Optional[str] = Query(None, description="Filter users by account ID"),
+    search: Optional[str] = Query(None, description="Search users by name or email"),
+    skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum number of records to return"),
+    current_user: User = Depends(verify_user_view_permissions),
+    db: Session = Depends(get_db)
+):
+    """Alias for get_users to handle requests without trailing slash"""
+    return await get_users(role, account_id, search, skip, limit, current_user, db)
+
 @router.get("/{user_id}", response_model=UserResponse, summary="Get User")
 async def get_user(
     user_id: str = Path(..., description="The ID of the user to retrieve"),

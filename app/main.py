@@ -31,12 +31,19 @@ app = FastAPI(
         "url": "https://genascope.example.com/license",
     },
     swagger_ui_parameters={"defaultModelsExpandDepth": 1},
+    redirect_slashes=False,  # Disable automatic trailing slash redirects
 )
 
 # Configure CORS - update with your frontend URL when deployed
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:4321", "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:3000",
+    "http://localhost:4321",
+    "http://localhost:5173",
+    "https://genascope-frontend-dev.fly.dev",
+    "https://genascope-frontend-staging.fly.dev", 
+    "https://genascope-frontend.fly.dev",
+    "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

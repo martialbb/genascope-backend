@@ -81,10 +81,32 @@ def upgrade() -> None:
         # Log error but continue with migration
         print(f"Warning: Failed to set non-nullable constraints: {str(e)}")
     
-    # Create necessary indexes
+    # Create necessary indexes (only if they don't exist)
     try:
-        op.create_index(op.f('ix_invites_email'), 'invites', ['email'], unique=False)
-        op.create_index(op.f('ix_invites_invite_token'), 'invites', ['invite_token'], unique=True)
+        connection = op.get_bind()
+        
+        # Check if ix_invites_email index exists
+        result = connection.execute(sa.text(
+            "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_invites_email'"
+        )).fetchone()
+        
+        if not result:
+            op.create_index(op.f('ix_invites_email'), 'invites', ['email'], unique=False)
+            print("✅ Created index: ix_invites_email")
+        else:
+            print("⚠️  Index ix_invites_email already exists, skipping")
+        
+        # Check if ix_invites_invite_token index exists
+        result = connection.execute(sa.text(
+            "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_invites_invite_token'"
+        )).fetchone()
+        
+        if not result:
+            op.create_index(op.f('ix_invites_invite_token'), 'invites', ['invite_token'], unique=True)
+            print("✅ Created index: ix_invites_invite_token")
+        else:
+            print("⚠️  Index ix_invites_invite_token already exists, skipping")
+            
     except Exception as e:
         # Log error but continue with migration
         print(f"Warning: Failed to create indexes: {str(e)}")

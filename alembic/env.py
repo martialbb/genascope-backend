@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app.db.database import Base
 from app.core.config import settings
 
+# Import all models to ensure they're registered with SQLAlchemy
+import app.models  # This imports all models from __init__.py
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -23,7 +26,7 @@ config.set_main_option('sqlalchemy.url', settings.database_url)
 
 def run_migrations_offline():
     context.configure(
-        url=settings.DATABASE_URI,
+        url=settings.database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
