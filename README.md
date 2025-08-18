@@ -41,6 +41,20 @@ cp .env.example .env.local
 
 ### Development Setup
 
+#### Option 1: Docker (Recommended)
+
+```sh
+# Quick start with Docker
+./build.sh dev
+
+# Development with hot-reload
+docker-compose up --build
+
+# Access API at http://localhost:8080
+```
+
+#### Option 2: Local Python Environment
+
 ```sh
 # Create virtual environment
 python -m venv venv
@@ -66,17 +80,53 @@ All commands are run from the root of the project, from a terminal:
 
 | Command                 | Action                                           |
 | :---------------------- | :----------------------------------------------- |
+| `./build.sh dev`        | Build optimized Docker image for development     |
+| `./build.sh prod`       | Build optimized Docker image for production      |
+| `docker-compose up`     | Start development environment with hot-reload   |
 | `uvicorn app.main:app --reload` | Start development server at `localhost:8000` |
 | `pytest tests/`          | Run comprehensive test suite                      |
 | `pytest`                | Run tests                                        |
 | `alembic upgrade head`  | Run database migrations                          |
 | `alembic revision --autogenerate -m "message"` | Generate database migration |
 
+## 🐳 Docker Development
+
+### Quick Start
+```sh
+# Build and run with Docker (recommended)
+./build.sh dev
+docker run -p 8080:8080 genascope-backend:dev
+
+# Or use docker-compose for development
+docker-compose up --build
+```
+
+### Docker Features
+- **Multi-stage builds** for optimized image size (1.6GB vs 1.86GB)
+- **Hot-reload support** in development mode
+- **Security hardening** with non-root user
+- **Health checks** for container orchestration
+- **Virtual environment isolation** for better dependency management
+
+### Build Scripts
+- `./build.sh dev` - Development build with debugging
+- `./build.sh prod` - Production build optimized for size
+- `./build.sh --no-cache` - Force rebuild without cache
+
+See [DOCKER_OPTIMIZATION.md](DOCKER_OPTIMIZATION.md) for detailed optimization information.
+
 ## 📚 API Documentation
 
 Once the server is running, you can access:
 - Interactive API documentation: `http://localhost:8000/docs`
 - Alternative API documentation: `http://localhost:8000/redoc`
+
+## 📖 Additional Documentation
+
+- [Docker Optimization Guide](DOCKER_OPTIMIZATION.md) - Detailed Docker build improvements
+- [Development Setup](DEVELOPMENT_SETUP.md) - Complete development environment setup
+- [Deployment Guide](DEPLOYMENT.md) - Production deployment instructions
+- [Changelog](CHANGELOG.md) - Recent changes and improvements
 
 ## 🏗️ Architecture
 

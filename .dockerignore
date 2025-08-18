@@ -1,18 +1,29 @@
-# Git
+# ==============================================================================
+# Docker ignore file for genascope-backend
+# Optimized for build performance and security
+# ==============================================================================
+
+# Git and version control
 .git
 .gitignore
 .gitattributes
+.github/
 
 # Documentation
 README.md
 *.md
 docs/
+DOCUMENTATION.*
+TEST_RESULTS.md
+BACKEND_DOCUMENTATION.md
+CHAT_CONFIGURATION_DESIGN.md
+PATIENT_INVITE_DOCUMENTATION.md
 
-# Environment files
+# Environment files (keep .env.example for reference)
 .env*
 !.env.example
 
-# Python
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -44,7 +55,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# Testing
+# Testing and coverage
 .pytest_cache/
 .coverage
 .nyc_output
@@ -55,6 +66,10 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+test_*.py
+*_test.py
+tests/
+run_tests*.sh
 
 # IDEs and editors
 .vscode/
@@ -64,32 +79,36 @@ coverage.xml
 *~
 .DS_Store
 Thumbs.db
+*.sublime-*
 
-# Logs
+# Logs and temporary files
 *.log
 logs/
+*.tmp
+*.temp
+.tmp/
+.temp/
+migration.log
 
 # Node modules (if any)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package*.json
+yarn.lock
 
-# Docker
+# Docker files (avoid recursive builds)
 Dockerfile*
 docker-compose*
 .dockerignore
 
-# Database
+# Database files
 *.db
 *.sqlite
 *.sqlite3
-
-# Temporary files
-*.tmp
-*.temp
-.tmp/
-.temp/
+*.sql
+local_backup.sql
 
 # OS generated files
 .DS_Store
@@ -100,14 +119,37 @@ docker-compose*
 ehthumbs.db
 Thumbs.db
 
-# Alembic compiled files
+# Development scripts and utilities
+scripts/
+create_test_*.py
+test_*.py
+debug_*.sh
+fix_*.sh
+run_*.sh
+*migration*.sh
+migrate_*.py
+validate_*.py
+
+# Cache and compiled files
+*.pyc
 alembic/versions/*.pyc
+alembic/__pycache__/
 
-# Local development files
-migration.log
-local_backup.sql
+# Local development artifacts
+.pytest_cache/
+.mypy_cache/
+.coverage
+.env.local
+.env.development
 
-# IDE specific
-.vscode/
-.idea/
-*.sublime-*
+# Security sensitive files
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Backup and temporary SQL files
+*.backup
+*.bak
+*.old

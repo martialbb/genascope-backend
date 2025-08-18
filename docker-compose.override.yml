@@ -1,0 +1,67 @@
+# ==============================================================================
+# Docker Compose Override for Development
+# This file provides development-specific optimizations
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  backend:
+    # Use build cache and bind mounts for faster development
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - genascope-backend:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    
+    # Development environment variables
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - DEBUG=true
+      - RUN_MIGRATIONS=true
+    
+    # Bind mount for hot reloading (development only)
+    volumes:
+      - ./app:/app/app:ro
+      - ./alembic:/app/alembic:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    
+    # Override command for development with auto-reload
+    command: >
+      sh -c "uvicorn app.main:app 
+             --host 0.0.0.0 
+             --port 8080 
+             --reload 
+             --reload-dir /app/app
+             --log-level debug"
+    
+    # Resource limits for development
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Optional: Add Redis for caching in development
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.1'
+
+volumes:
+  redis_data:
