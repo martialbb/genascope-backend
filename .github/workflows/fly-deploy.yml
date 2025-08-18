@@ -4,25 +4,42 @@ name: Fly Deploy
 # * Fly.io CI/CD Docs: https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
 # * flyctl deploy options: flyctl deploy --help
 
+# Triggers
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       environment:
-        description: "Deployment environment (prod or staging)"
+        description: Deployment environment (dev or prod)
         required: false
-        default: "prod"
+        default: dev
       rollback_image:
-        description: "Optional image reference (registry/sha) to rollback to"
+        description: Optional image reference (registry/sha) to rollback to
         required: false
+
+# Least-privilege token (add more if later needed, e.g. contents: write to create releases)
+permissions:
+  contents: read
+  packages: read
+  id-token: write   # for OIDC (optional future use)
+
+defaults:
+  run:
+    shell: bash
 
 env:
   # Common build metadata
   COMMIT_SHA: ${{ github.sha }}
   BUILD_TIMESTAMP: ${{ github.run_started_at }}
   PYTHON_VERSION: "3.11"
-  FLY_APP_NAME: "genascope-backend"
+  # Define both app names; adjust if actual Fly app names differ
+  FLY_APP_NAME_DEV: "genascope-backend"        # current dev app
+  FLY_APP_NAME_PROD: "genascope-backend-prod"  # placeholder production app name
   # Fail fast on any unhandled error in script blocks
   SHELLOPTS: errexit:pipefail
 
@@ -107,12 +124,12 @@ EOF
           echo "Commit: $COMMIT_SHA" >> $GITHUB_STEP_SUMMARY
 
   deploy:
-    name: Deploy to Fly.io
+    name: Deploy to Fly.io (Dev/Prod)
     needs: build_and_smoke_test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.ref == 'refs/heads/main'
-    environment: production
+    environment: ${{ github.event.inputs.environment || 'dev' }}
     steps:
       - name: Checkout (for fly.toml)
         uses: actions/checkout@v4
@@ -120,7 +137,21 @@ EOF
       - name: Setup Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Decide deployment image mode
+      - name: Select environment / app
+        id: select_env
+        run: |
+          DEPLOY_ENV="${{ github.event.inputs.environment }}"
+          if [ -z "$DEPLOY_ENV" ]; then DEPLOY_ENV=dev; fi
+          if [ "$DEPLOY_ENV" = "prod" ]; then
+            APP_NAME="${{ env.FLY_APP_NAME_PROD }}"
+          else
+            APP_NAME="${{ env.FLY_APP_NAME_DEV }}"
+          fi
+          echo "deploy_env=$DEPLOY_ENV" >> $GITHUB_OUTPUT
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "Selected environment: $DEPLOY_ENV -> app: $APP_NAME"
+
+  - name: Decide deployment image mode
         id: deploy_mode
         run: |
           if [ -n "${{ github.event.inputs.rollback_image }}" ]; then
@@ -131,45 +162,46 @@ EOF
             echo "mode=remote-build" >> $GITHUB_OUTPUT
           fi
 
-      - name: Rollback to specified image
+    - name: Rollback to specified image
         if: steps.deploy_mode.outputs.mode == 'rollback'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           echo "🔁 Rolling back to image ${{ steps.deploy_mode.outputs.image_ref }}"
-          flyctl deploy --image ${{ steps.deploy_mode.outputs.image_ref }} --app $FLY_APP_NAME --strategy immediate --detach
+      flyctl deploy --image ${{ steps.deploy_mode.outputs.image_ref }} --app ${{ steps.select_env.outputs.app_name }} --strategy immediate --detach
 
-      - name: Remote build & deploy (prod)
+  - name: Remote build & deploy
         if: steps.deploy_mode.outputs.mode == 'remote-build'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           echo "🚀 Deploying commit $COMMIT_SHA to Fly (remote build)"
           flyctl deploy \
-            --app $FLY_APP_NAME \
+    --app ${{ steps.select_env.outputs.app_name }} \
             --remote-only \
             --build-arg COMMIT_SHA=$COMMIT_SHA \
             --build-arg BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
-            --strategy canary \
+    --strategy $([ "${{ steps.select_env.outputs.deploy_env }}" = "prod" ] && echo canary || echo immediate) \
             --detach
 
-      - name: Post-deploy health check
+  - name: Post-deploy health check
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           echo "🔎 Waiting for allocation health (60s timeout)"
           # Basic check using fly status; can be enhanced with API polling
           for i in {1..12}; do
-            if flyctl status --app $FLY_APP_NAME | grep -qi "healthy"; then
+    if flyctl status --app ${{ steps.select_env.outputs.app_name }} | grep -qi "healthy"; then
               echo "✅ App reported healthy"; break; fi; sleep 5;
             if [ $i -eq 12 ]; then echo "❌ App did not become healthy in time"; flyctl status --app $FLY_APP_NAME; exit 1; fi
           done
 
-      - name: Deployment summary
+    - name: Deployment summary
         run: |
           echo "### Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "Mode: ${{ steps.deploy_mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
-          echo "App: $FLY_APP_NAME" >> $GITHUB_STEP_SUMMARY
+      echo "Environment: ${{ steps.select_env.outputs.deploy_env }}" >> $GITHUB_STEP_SUMMARY
+      echo "App: ${{ steps.select_env.outputs.app_name }}" >> $GITHUB_STEP_SUMMARY
           echo "Commit: $COMMIT_SHA" >> $GITHUB_STEP_SUMMARY
           echo "Timestamp: $BUILD_TIMESTAMP" >> $GITHUB_STEP_SUMMARY
 
