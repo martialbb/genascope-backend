@@ -10,14 +10,13 @@ class Settings(BaseSettings):
     """
     Application settings
     """
-    # Database - handle both local and production
+    # Database configuration
     DATABASE_URI: str = ""
-    DATABASE_URL: str = ""  # fly.io sets this automatically
     
     @property
     def database_url(self) -> str:
-        """Get database URL, preferring fly.io's DATABASE_URL over local DATABASE_URI"""
-        url = self.DATABASE_URL or self.DATABASE_URI
+        """Get database URL for local development"""
+        url = self.DATABASE_URI
         # Fix SQLAlchemy 1.4+ compatibility: replace postgres:// with postgresql://
         if url.startswith('postgres://'):
             url = url.replace('postgres://', 'postgresql://')

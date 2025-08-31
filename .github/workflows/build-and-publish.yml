@@ -1,0 +1,257 @@
+name: Build and Publish Docker Image
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'docker/**'
+      - 'alembic/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'docker/**'
+      - 'alembic/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17-v0.7.4
+        env:
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        options: >-
+          --health-cmd "pg_isready -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }}"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        
+        # Install all requirements files
+        if [ -f requirements.txt ]; then 
+          echo "Installing requirements.txt..."
+          pip install -r requirements.txt
+        fi
+        if [ -f requirements.postgresql.txt ]; then 
+          echo "Installing requirements.postgresql.txt..."
+          pip install -r requirements.postgresql.txt
+        fi
+        if [ -f requirements.ai-chat.txt ]; then 
+          echo "Installing requirements.ai-chat.txt..."
+          pip install -r requirements.ai-chat.txt
+        fi
+
+    - name: Wait for PostgreSQL
+      run: |
+        for i in {1..30}; do
+          if pg_isready -h localhost -p 5432 -U ${{ vars.POSTGRES_USER }}; then
+            echo "PostgreSQL is ready"
+            break
+          fi
+          echo "Waiting for PostgreSQL... ($i/30)"
+          sleep 2
+        done
+
+    - name: Setup test database
+      env:
+        PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        PGUSER: ${{ vars.POSTGRES_USER }}
+      run: |
+        # Create test database if it doesn't exist
+        psql -h localhost -U ${{ vars.POSTGRES_USER }} -tc "SELECT 1 FROM pg_database WHERE datname = '${{ vars.POSTGRES_DB }}'" | grep -q 1 || \
+        psql -h localhost -U ${{ vars.POSTGRES_USER }} -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
+        
+        # Enable pgvector extension
+        psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Run database migrations
+      env:
+        DATABASE_URI: postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ vars.POSTGRES_DB }}
+        SECRET_KEY: test-secret-key-for-github-actions
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ENVIRONMENT: test
+      run: |
+        echo "Running Alembic migrations..."
+        alembic upgrade head
+
+    - name: Run linting (if available)
+      continue-on-error: true
+      run: |
+        # Install and run linting tools if available
+        if pip show flake8 > /dev/null 2>&1; then
+          echo "Running flake8..."
+          flake8 app/ --max-line-length=100 --ignore=E203,W503 || true
+        fi
+        
+        if pip show black > /dev/null 2>&1; then
+          echo "Checking code formatting with black..."
+          black --check app/ || echo "Black formatting check failed (non-blocking)"
+        fi
+
+    - name: Run tests
+      env:
+        DATABASE_URI: postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ vars.POSTGRES_DB }}
+        SECRET_KEY: test-secret-key-for-github-actions
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ENVIRONMENT: test
+        RUN_MIGRATIONS: "false"  # Already ran migrations above
+      run: |
+        # Run tests if they exist
+        if [ -d tests/ ] && [ "$(ls -A tests/)" ]; then
+          echo "Running tests..."
+          python -m pytest tests/ -v --tb=short --maxfail=10
+        else
+          echo "No tests found or tests directory is empty"
+          echo "Creating a basic smoke test..."
+          python -c "
+import sys
+sys.path.append('.')
+try:
+    from app.main import app
+    print('✅ App imports successfully')
+    from app.core.config import settings
+    print('✅ Settings load successfully')
+    print('✅ Basic smoke test passed')
+except Exception as e:
+    print(f'❌ Smoke test failed: {e}')
+    sys.exit(1)
+          "
+        fi
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=Genascope Backend
+          org.opencontainers.image.description=AI-powered genetic counseling platform backend
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created={{date 'YYYY-MM-DDTHH:MM:SSZ'}}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          DEBIAN_FRONTEND=noninteractive
+          PIP_NO_CACHE_DIR=1
+          PIP_DISABLE_PIP_VERSION_CHECK=1
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+        subject-digest: ${{ steps.build.outputs.digest }}
+        push-to-registry: true
+
+  security-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      security-events: write
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  deployment-ready:
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Deployment notification
+      run: |
+        echo "🚀 New Docker image is ready for deployment!"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        echo "SHA: ${{ github.sha }}"
+        echo ""
+        echo "To deploy on your Orange Pi:"
+        echo "1. docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        echo "2. docker-compose -f docker-compose.prod.yml up -d"

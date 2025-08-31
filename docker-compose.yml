@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17-v0.7.4
+    container_name: genascope_postgres
+    environment:
+      POSTGRES_DB: genascope
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgresql/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: .
+    container_name: genascope_backend
+    environment:
+      - DATABASE_URI=postgresql://postgres:postgres@postgres:5432/genascope
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - SMTP_SERVER=maildev
+      - SMTP_PORT=1025
+      - SMTP_USERNAME=
+      - SMTP_PASSWORD=
+      - EMAIL_ENABLED=true
+      - FRONTEND_URL=http://localhost:3000
+      - ENABLE_MOCK_CALCULATORS=true
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app:ro
+    command: >
+      sh -c "
+        echo 'Running database migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting FastAPI application...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+      "
+
+  maildev:
+    image: maildev/maildev
+    container_name: genascope_maildev
+    ports:
+      - "1080:1080"  # Web interface
+      - "1025:1025"  # SMTP server
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local

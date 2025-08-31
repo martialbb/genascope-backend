@@ -4,6 +4,7 @@ AI Chat Configuration
 Configuration settings for the AI-driven chat system.
 """
 import os
+import logging
 from typing import Optional, Dict, Any
 try:
     from pydantic_settings import BaseSettings
@@ -11,6 +12,8 @@ except ImportError:
     # Fallback for older pydantic versions
     from pydantic import BaseSettings
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 
 class AIConfig(BaseSettings):
@@ -31,6 +34,13 @@ class AIConfig(BaseSettings):
     backup_model: str = Field("gpt-3.5-turbo", env="BACKUP_MODEL")
     max_retries: int = Field(3, env="AI_MAX_RETRIES")
     request_timeout: int = Field(30, env="AI_REQUEST_TIMEOUT")
+    
+    # Circuit breaker configuration
+    circuit_breaker_failure_threshold: int = Field(5, env="CIRCUIT_BREAKER_FAILURE_THRESHOLD")
+    circuit_breaker_recovery_timeout: int = Field(60, env="CIRCUIT_BREAKER_RECOVERY_TIMEOUT")
+    
+    # Service availability
+    fail_fast_on_startup: bool = Field(True, env="FAIL_FAST_ON_STARTUP")
 
 
 class VectorStoreConfig(BaseSettings):
@@ -205,30 +215,150 @@ class AIChatSettings:
             "confidence_threshold": self.extraction.entity_confidence_threshold
         }
     
+    @property
+    def environment(self) -> str:
+        """Get the current environment."""
+        return os.getenv("ENVIRONMENT", "development")
+    
     def is_development(self) -> bool:
         """Check if running in development mode."""
-        return os.getenv("ENVIRONMENT", "development") == "development"
+        return self.environment == "development"
     
     def is_production(self) -> bool:
         """Check if running in production mode."""
-        return os.getenv("ENVIRONMENT", "development") == "production"
+        return self.environment == "production"
+    
+    @property
+    def is_openai_configured(self) -> bool:
+        """Check if OpenAI API key is configured."""
+        return self.ai.openai_api_key is not None and self.ai.openai_api_key.strip() != ""
+    
+    @property
+    def should_use_mock_mode(self) -> bool:
+        """
+        Determine if mock mode should be used.
+        Only allow mock mode in development/testing environments when OpenAI is not configured.
+        """
+        return (
+            self.environment in ["development", "testing"] and
+            not self.is_openai_configured
+        )
+    
+    async def validate_openai_connection(self) -> bool:
+        """
+        Validate OpenAI connection by making a test request.
+        Returns True if connection is valid, False otherwise.
+        """
+        if not self.is_openai_configured:
+            return False
+        
+        try:
+            import openai
+            openai.api_key = self.ai.openai_api_key
+            
+            # Make a minimal test request
+            response = await openai.ChatCompletion.acreate(
+                model="gpt-3.5-turbo",  # Use cheaper model for testing
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+                timeout=5
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"OpenAI connection validation failed: {e}")
+            return False
+    
+    def get_circuit_breaker_config(self) -> Dict[str, Any]:
+        """Get circuit breaker configuration."""
+        return {
+            "failure_threshold": self.ai.circuit_breaker_failure_threshold,
+            "recovery_timeout": self.ai.circuit_breaker_recovery_timeout,
+        }
+    
+    def validate_production_config(self) -> list[str]:
+        """
+        Validate configuration for production environment.
+        Returns list of configuration errors.
+        """
+        errors = []
+        
+        if not self.is_openai_configured:
+            errors.append("OpenAI API key is required in production")
+        
+        if self.should_use_mock_mode:
+            errors.append("Mock mode is not allowed in production")
+        
+        if self.ai.fail_fast_on_startup is False:
+            errors.append("fail_fast_on_startup should be enabled in production")
+        
+        if self.security.anonymize_before_ai is False:
+            errors.append("anonymize_before_ai should be enabled in production")
+        
+        if self.security.enable_audit_logging is False:
+            errors.append("enable_audit_logging should be enabled in production")
+        
+        return errors
+    
+    def get_environment_recommendations(self) -> Dict[str, Any]:
+        """Get configuration recommendations based on environment."""
+        if self.is_production():
+            return {
+                "fail_fast_on_startup": True,
+                "anonymize_before_ai": True,
+                "enable_audit_logging": True,
+                "enable_metrics": True,
+                "circuit_breaker_failure_threshold": 3,
+                "mock_mode_allowed": False
+            }
+        elif self.environment == "staging":
+            return {
+                "fail_fast_on_startup": True,
+                "anonymize_before_ai": True,
+                "enable_audit_logging": True,
+                "enable_metrics": True,
+                "circuit_breaker_failure_threshold": 5,
+                "mock_mode_allowed": False
+            }
+        else:  # development/testing
+            return {
+                "fail_fast_on_startup": False,
+                "anonymize_before_ai": False,
+                "enable_audit_logging": False,
+                "enable_metrics": False,
+                "circuit_breaker_failure_threshold": 10,
+                "mock_mode_allowed": True
+            }
 
 
-# Global settings instance (lazy initialization)
-_ai_chat_settings = None
+# Mock response templates for different specialties
+MOCK_RESPONSE_TEMPLATES = {
+    "oncology": {
+        "welcome": "Hello! I'm here to help with your breast cancer risk assessment. Let's start by gathering some basic information.",
+        "follow_up": "Thank you for that information. {extracted_info} Can you tell me more about {next_topic}?",
+        "assessment": "Based on our conversation, here's what I've learned: {summary}. Would you like to discuss next steps?",
+        "closing": "Thank you for completing this assessment. Your information has been recorded for review."
+    },
+    "genetics": {
+        "welcome": "Welcome to genetic counseling intake. I'll help gather information about your family history and concerns.",
+        "follow_up": "I understand you mentioned {extracted_info}. Can you provide more details about {next_topic}?",
+        "assessment": "Your family history shows: {summary}. This information will help determine appropriate genetic testing options.",
+        "closing": "Thank you for providing this detailed family history. A genetic counselor will review your information."
+    },
+    "general": {
+        "welcome": "Hello! I'm here to help with your health assessment. Let's begin.",
+        "follow_up": "Thanks for sharing that. {extracted_info} What else should we discuss about {next_topic}?",
+        "assessment": "Here's a summary of our conversation: {summary}. Are there other concerns you'd like to address?",
+        "closing": "Thank you for completing this assessment. Your healthcare team will follow up as needed."
+    }
+}
 
-def get_ai_chat_settings() -> AIChatSettings:
-    """Get the global AI chat settings instance."""
-    global _ai_chat_settings
-    if _ai_chat_settings is None:
-        _ai_chat_settings = AIChatSettings()
-    return _ai_chat_settings
+# Create global settings instance
+ai_chat_settings = AIChatSettings()
 
 
-# Template configurations for common scenarios
-
-BREAST_CANCER_SCREENING_CONFIG = {
-    "strategy_name": "Breast Cancer Risk Assessment",
+# Additional configuration templates for different assessment types
+BRCA_SCREENING_CONFIG = {
+    "strategy_name": "BRCA Risk Assessment",
     "ai_model_config": {
         "model_name": "gpt-4",
         "temperature": 0.7,

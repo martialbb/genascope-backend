@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 from app.repositories.ai_chat_repository import AIChatRepository
 from app.models.ai_chat import AIChatSession, ExtractionRule
 from app.models.chat_configuration import ChatStrategy
-from app.core.ai_chat_config import get_ai_chat_settings
+from app.core.ai_chat_config import get_ai_chat_settings, ai_chat_settings
 from app.services.base import BaseService
+from app.services.mock_ai_service import MockAIService
 
 
 class EntityExtractionService(BaseService):
@@ -25,6 +26,20 @@ class EntityExtractionService(BaseService):
         self.db = db
         self.ai_chat_repo = AIChatRepository(db)
         self.settings = get_ai_chat_settings()
+        
+        if ai_chat_settings.should_use_mock_mode:
+            self.mock_service = MockAIService()
+            self.use_mock_mode = True
+        else:
+            self.use_mock_mode = False
+            # Initialize real extraction services
+            try:
+                import spacy
+                self.nlp = spacy.load("en_core_web_sm")
+            except (ImportError, OSError):
+                # Fallback to mock mode if spaCy is not available
+                self.mock_service = MockAIService()
+                self.use_mock_mode = True
     
     async def extract_entities(
         self, 
@@ -34,6 +49,9 @@ class EntityExtractionService(BaseService):
     ) -> Dict[str, Any]:
         """Extract entities from a user message based on session strategy."""
         try:
+            if self.use_mock_mode:
+                return await self.mock_service.extract_entities_mock(message, context or {})
+            
             # Get extraction rules for the strategy
             strategy = self.ai_chat_repo.get_strategy_by_id(session.strategy_id)
             if not strategy or not strategy.extraction_rules:

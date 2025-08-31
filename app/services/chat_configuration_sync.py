@@ -579,9 +579,6 @@ class KnowledgeSourceService:
                 "content_type": file.content_type,
                 "file_path": storage_key,  # Store the storage key (preserves original filename structure)
                 "file_size": upload_result.size,
-                "s3_bucket": upload_result.bucket,
-                "s3_key": upload_result.key,
-                "s3_url": upload_result.url,
                 "access_level": request.access_level.value if hasattr(request.access_level, 'value') else str(request.access_level),
                 "processing_status": "pending",
                 "is_active": True,

@@ -90,6 +90,13 @@ class InviteService(BaseService):
             patient_name = patient.full_name
             clinician_name = clinician.name
             
+            # Get organization name and domain from patient's account
+            organization_name = "Cancer-Genix"  # Default fallback
+            organization_domain = None
+            if patient.account and patient.account.name:
+                organization_name = patient.account.name
+                organization_domain = patient.account.domain
+            
             # Generate invite URL using the frontend URL from settings
             invite_url = self.generate_invite_url(invite)
             
@@ -103,6 +110,8 @@ class InviteService(BaseService):
                 clinician_name=clinician_name,
                 invite_url=invite_url,
                 expires_at=expires_at,
+                organization_name=organization_name,
+                organization_domain=organization_domain,
                 custom_message=invite.custom_message
             )
         

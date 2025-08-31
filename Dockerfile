@@ -102,12 +102,9 @@ USER app
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
 
-# Expose port 8080 for fly.io
+# Expose port 8080
 EXPOSE 8080
 
-# Set the entrypoint script
-ENTRYPOINT ["./start.sh"]
-
-# Default command for fly.io (can be overridden by docker-compose)
+# Default command - start the FastAPI application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
 
