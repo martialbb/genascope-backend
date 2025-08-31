@@ -26,15 +26,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Upgrade pip and install wheel for faster builds
 RUN pip install --upgrade pip wheel setuptools
 
-# Copy only requirements files first (for better caching)
-COPY requirements.txt requirements.ai-chat.txt requirements.postgresql.txt ./
-
-# Combine all requirements into a single file to reduce layers
-RUN cat requirements.txt requirements.postgresql.txt requirements.ai-chat.txt | \
-    sort | uniq > combined_requirements.txt
+# Copy only requirements file first (for better caching)
+COPY requirements.txt ./
 
 # Install Python dependencies in virtual environment
-RUN pip install --no-cache-dir -r combined_requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # ---- Production stage ----
 FROM python:3.11-slim AS production

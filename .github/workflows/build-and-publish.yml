@@ -66,20 +66,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        
-        # Install all requirements files
-        if [ -f requirements.txt ]; then 
-          echo "Installing requirements.txt..."
-          pip install -r requirements.txt
-        fi
-        if [ -f requirements.postgresql.txt ]; then 
-          echo "Installing requirements.postgresql.txt..."
-          pip install -r requirements.postgresql.txt
-        fi
-        if [ -f requirements.ai-chat.txt ]; then 
-          echo "Installing requirements.ai-chat.txt..."
-          pip install -r requirements.ai-chat.txt
-        fi
+        echo "Installing requirements.txt..."
+        pip install -r requirements.txt
 
     - name: Wait for PostgreSQL
       run: |
