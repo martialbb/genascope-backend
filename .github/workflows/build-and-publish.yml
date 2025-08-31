@@ -29,6 +29,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: dev
     
     services:
       postgres:
@@ -160,6 +161,7 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    environment: dev
     permissions:
       contents: read
       packages: write
@@ -245,6 +247,7 @@ jobs:
   deployment-ready:
     needs: [test, build-and-push]
     runs-on: ubuntu-latest
+    environment: dev
     if: github.ref == 'refs/heads/main'
     
     steps:
