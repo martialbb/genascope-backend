@@ -116,6 +116,15 @@ jobs:
         SECRET_KEY: test-secret-key-for-github-actions
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         ENVIRONMENT: test
+        # Required environment variables for Settings validation
+        LAB_API_KEY: test-lab-api-key
+        LAB_API_URL: https://test-lab-api.example.com
+        FRONTEND_URL: http://localhost:3000
+        CORS_ORIGINS: '["http://localhost:3000"]'
+        SMTP_HOST: localhost
+        SMTP_PORT: 1025
+        SMTP_USER: test@example.com
+        SMTP_PASSWORD: test-password
       run: |
         echo "Running Alembic migrations..."
         alembic upgrade head
@@ -141,6 +150,15 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         ENVIRONMENT: test
         RUN_MIGRATIONS: "false"  # Already ran migrations above
+        # Required environment variables for Settings validation
+        LAB_API_KEY: test-lab-api-key
+        LAB_API_URL: https://test-lab-api.example.com
+        FRONTEND_URL: http://localhost:3000
+        CORS_ORIGINS: '["http://localhost:3000"]'
+        SMTP_HOST: localhost
+        SMTP_PORT: 1025
+        SMTP_USER: test@example.com
+        SMTP_PASSWORD: test-password
       run: |
         # Run tests if they exist
         if [ -d tests/ ] && [ "$(ls -A tests/)" ]; then
@@ -151,15 +169,19 @@ jobs:
           echo "Creating a basic smoke test..."
           python -c "
         import sys
+        import os
         sys.path.append('.')
         try:
             from app.main import app
             print('✅ App imports successfully')
             from app.core.config import settings
             print('✅ Settings load successfully')
+            print(f'✅ Database URI: {settings.DATABASE_URI[:50]}...')
             print('✅ Basic smoke test passed')
         except Exception as e:
             print(f'❌ Smoke test failed: {e}')
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
         "
         fi
