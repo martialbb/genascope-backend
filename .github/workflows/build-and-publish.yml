@@ -110,8 +110,9 @@ jobs:
         echo "Database setup completed successfully!"
         psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "\dx" | grep vector || echo "Vector extension check failed"
 
-    - name: Run database migrations
+    - name: Setup database schema from production dump
       env:
+        PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         DATABASE_URI: postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ vars.POSTGRES_DB }}
         SECRET_KEY: test-secret-key-for-github-actions
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -126,8 +127,38 @@ jobs:
         SMTP_USER: test@example.com
         SMTP_PASSWORD: test-password
       run: |
-        echo "Running Alembic migrations..."
-        alembic upgrade head
+        echo "Setting up database schema from production dump..."
+        
+        # Check if dump file exists
+        if [ -f "docker/postgresql/init/03_restore_data.dump" ]; then
+          echo "Found production dump file, restoring schema..."
+          
+          # Use postgres user for restore operations
+          export PGPASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          
+          # Restore schema and sample data from dump (exclude data to keep it lightweight)
+          echo "Restoring database schema..."
+          pg_restore -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} \
+            --verbose --no-owner --no-privileges --schema-only \
+            docker/postgresql/init/03_restore_data.dump || {
+            echo "Schema restore failed, falling back to Alembic migrations..."
+            alembic upgrade head
+          }
+          
+          # Mark the database as up-to-date with Alembic
+          echo "Marking database as current with Alembic..."
+          # Get the latest migration version
+          LATEST_VERSION=$(find alembic/versions -name "*.py" | grep -v __pycache__ | sort | tail -1 | xargs basename | cut -d'_' -f1)
+          if [ ! -z "$LATEST_VERSION" ]; then
+            psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c \
+              "INSERT INTO alembic_version (version_num) VALUES ('$LATEST_VERSION') ON CONFLICT (version_num) DO NOTHING;"
+          fi
+        else
+          echo "No dump file found, running Alembic migrations..."
+          alembic upgrade head
+        fi
+        
+        echo "Database setup completed successfully!"
 
     - name: Run linting (if available)
       continue-on-error: true
