@@ -261,6 +261,17 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Determine platforms
+      id: platforms
+      run: |
+        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          echo "Building for both AMD64 and ARM64 (main branch)"
+        else
+          echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          echo "Building for AMD64 only (development branch)"
+        fi
+
     - name: Build and push Docker image
       id: build
       uses: docker/build-push-action@v5
@@ -270,13 +281,15 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        platforms: ${{ steps.platforms.outputs.platforms }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
         build-args: |
           DEBIAN_FRONTEND=noninteractive
-          PIP_NO_CACHE_DIR=1
-          PIP_DISABLE_PIP_VERSION_CHECK=1
+          BUILDKIT_INLINE_CACHE=1
+        # Disable provenance and SBOM for faster builds
+        provenance: false
+        sbom: false
 
     - name: Generate artifact attestation
       uses: actions/attest-build-provenance@v1
