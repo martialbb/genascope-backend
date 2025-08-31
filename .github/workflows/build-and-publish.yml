@@ -141,18 +141,18 @@ jobs:
           echo "No tests found or tests directory is empty"
           echo "Creating a basic smoke test..."
           python -c "
-import sys
-sys.path.append('.')
-try:
-    from app.main import app
-    print('✅ App imports successfully')
-    from app.core.config import settings
-    print('✅ Settings load successfully')
-    print('✅ Basic smoke test passed')
-except Exception as e:
-    print(f'❌ Smoke test failed: {e}')
-    sys.exit(1)
-          "
+        import sys
+        sys.path.append('.')
+        try:
+            from app.main import app
+            print('✅ App imports successfully')
+            from app.core.config import settings
+            print('✅ Settings load successfully')
+            print('✅ Basic smoke test passed')
+        except Exception as e:
+            print(f'❌ Smoke test failed: {e}')
+            sys.exit(1)
+        "
         fi
 
   build-and-push:
