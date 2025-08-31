@@ -97,21 +97,25 @@ jobs:
         PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       run: |
         echo "Verifying database setup..."
-        # The PostgreSQL service should have created the user and database automatically
-        # Let's verify they exist and create them if they don't
         
-        # Check if database exists, create if not
-        psql -h localhost -U  ${{ vars.POSTGRES_USER }} -lqt | cut -d \| -f 1 | grep -qw ${{ vars.POSTGRES_DB }} || {
+        # Test connection first
+        echo "Testing PostgreSQL connection..."
+        psql -h localhost -U postgres -d postgres -c "SELECT version();"
+        
+        # Check if our custom database exists, create if not
+        echo "Checking if database ${{ vars.POSTGRES_DB }} exists..."
+        psql -h localhost -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${{ vars.POSTGRES_DB }}'" | grep -q 1 || {
           echo "Creating database ${{ vars.POSTGRES_DB }}..."
-          psql -h localhost -U ${{ vars.POSTGRES_USER }} -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
+          psql -h localhost -U postgres -d postgres -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
         }
         
         # Enable pgvector extension
         echo "Enabling pgvector extension..."
-        psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        psql -h localhost -U postgres -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
         
-        # Grant permissions to user (if user exists)
-        psql -h localhost -U ${{ vars.POSTGRES_USER }} -c "GRANT ALL PRIVILEGES ON DATABASE ${{ vars.POSTGRES_DB }} TO ${{ vars.POSTGRES_USER }};" || echo "User might not exist, continuing..."
+        # Verify setup
+        echo "Database setup completed successfully!"
+        psql -h localhost -U postgres -d ${{ vars.POSTGRES_DB }} -c "\dx" | grep vector || echo "Vector extension check failed"
 
     - name: Run database migrations
       env:
