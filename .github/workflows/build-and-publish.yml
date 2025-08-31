@@ -39,7 +39,7 @@ jobs:
           POSTGRES_USER: ${{ vars.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         options: >-
-          --health-cmd "pg_isready -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }}"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -84,7 +84,7 @@ jobs:
     - name: Wait for PostgreSQL
       run: |
         for i in {1..30}; do
-          if pg_isready -h localhost -p 5432 -U ${{ vars.POSTGRES_USER }}; then
+          if pg_isready -h localhost -p 5432 -U postgres; then
             echo "PostgreSQL is ready"
             break
           fi
@@ -95,14 +95,23 @@ jobs:
     - name: Setup test database
       env:
         PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        PGUSER: ${{ vars.POSTGRES_USER }}
       run: |
-        # Create test database if it doesn't exist
-        psql -h localhost -U ${{ vars.POSTGRES_USER }} -tc "SELECT 1 FROM pg_database WHERE datname = '${{ vars.POSTGRES_DB }}'" | grep -q 1 || \
-        psql -h localhost -U ${{ vars.POSTGRES_USER }} -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
+        echo "Verifying database setup..."
+        # The PostgreSQL service should have created the user and database automatically
+        # Let's verify they exist and create them if they don't
+        
+        # Check if database exists, create if not
+        psql -h localhost -U postgres -lqt | cut -d \| -f 1 | grep -qw ${{ vars.POSTGRES_DB }} || {
+          echo "Creating database ${{ vars.POSTGRES_DB }}..."
+          psql -h localhost -U postgres -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
+        }
         
         # Enable pgvector extension
-        psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        echo "Enabling pgvector extension..."
+        psql -h localhost -U postgres -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        
+        # Grant permissions to user (if user exists)
+        psql -h localhost -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${{ vars.POSTGRES_DB }} TO ${{ vars.POSTGRES_USER }};" || echo "User might not exist, continuing..."
 
     - name: Run database migrations
       env:
