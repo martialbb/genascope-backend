@@ -111,7 +111,7 @@ jobs:
         psql -h localhost -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
         
         # Grant permissions to user (if user exists)
-        psql -h localhost -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${{ vars.POSTGRES_DB }} TO ${{ vars.POSTGRES_USER }};" || echo "User might not exist, continuing..."
+        psql -h localhost -U ${{ vars.POSTGRES_USER }} -c "GRANT ALL PRIVILEGES ON DATABASE ${{ vars.POSTGRES_DB }} TO ${{ vars.POSTGRES_USER }};" || echo "User might not exist, continuing..."
 
     - name: Run database migrations
       env:
