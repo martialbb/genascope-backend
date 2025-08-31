@@ -32,7 +32,7 @@ jobs:
     
     services:
       postgres:
-        image: pgvector/pgvector:pg17-v0.7.4
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: ${{ vars.POSTGRES_DB }}
           POSTGRES_USER: ${{ vars.POSTGRES_USER }}
