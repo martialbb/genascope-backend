@@ -101,7 +101,7 @@ jobs:
         # Let's verify they exist and create them if they don't
         
         # Check if database exists, create if not
-        psql -h localhost -U postgres -lqt | cut -d \| -f 1 | grep -qw ${{ vars.POSTGRES_DB }} || {
+        psql -h localhost -U  ${{ vars.POSTGRES_USER }} -lqt | cut -d \| -f 1 | grep -qw ${{ vars.POSTGRES_DB }} || {
           echo "Creating database ${{ vars.POSTGRES_DB }}..."
           psql -h localhost -U postgres -c "CREATE DATABASE ${{ vars.POSTGRES_DB }};"
         }
