@@ -220,8 +220,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
 
     steps:
     - name: Checkout code
@@ -295,12 +293,18 @@ jobs:
         # Add timeout to prevent extremely long builds
         timeout: ${{ steps.platforms.outputs.timeout }}
 
-    - name: Generate artifact attestation
-      uses: actions/attest-build-provenance@v1
-      with:
-        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
-        subject-digest: ${{ steps.build.outputs.digest }}
-        push-to-registry: true
+    # Note: Build attestations are disabled for private repositories
+    # To enable attestations, either:
+    # 1. Make the repository public, OR
+    # 2. Move to GitHub organization account
+    # Then uncomment the following step:
+    #
+    # - name: Generate artifact attestation
+    #   uses: actions/attest-build-provenance@v1
+    #   with:
+    #     subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+    #     subject-digest: ${{ steps.build.outputs.digest }}
+    #     push-to-registry: true
 
   security-scan:
     needs: build-and-push
