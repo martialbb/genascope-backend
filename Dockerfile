@@ -1,5 +1,6 @@
 # ==============================================================================
 # Multi-stage Docker build for genascope-backend
+# Optimized for fast builds across architectures
 # ==============================================================================
 
 # ---- Build stage ----
@@ -9,13 +10,19 @@ FROM python:3.11-slim AS builder
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PIP_NO_CACHE_DIR=1
 ARG PIP_DISABLE_PIP_VERSION_CHECK=1
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 WORKDIR /app
+
+# Platform-specific optimization
+RUN echo "Building on: $BUILDPLATFORM, for: $TARGETPLATFORM"
 
 # Install build dependencies (kept minimal)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -23,14 +30,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and install wheel for faster builds
+# Upgrade pip and install wheel for faster builds + use binary wheels when possible
 RUN pip install --upgrade pip wheel setuptools
 
 # Copy only requirements file first (for better caching)
 COPY requirements.txt ./
 
-# Install Python dependencies in virtual environment
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with platform-specific optimizations
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir \
+    --prefer-binary \
+    --find-links https://download.pytorch.org/whl/cpu/torch_stable.html \
+    -r requirements.txt
 
 # ---- Production stage ----
 FROM python:3.11-slim AS production

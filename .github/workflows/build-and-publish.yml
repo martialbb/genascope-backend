@@ -22,6 +22,11 @@ on:
       - 'alembic/**'
       - '.github/workflows/**.yml'
 
+# Cancel running workflows on new push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -248,16 +253,24 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
+        driver-opts: |
+          network=host
 
-    - name: Determine platforms
+    - name: Determine platforms and build strategy
       id: platforms
       run: |
-        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" = "push" ]; then
           echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          echo "Building for both AMD64 and ARM64 (main branch)"
+          echo "cache_mode=max" >> $GITHUB_OUTPUT
+          echo "timeout=60m" >> $GITHUB_OUTPUT
+          echo "Building for both AMD64 and ARM64 (main branch production)"
         else
           echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          echo "Building for AMD64 only (development branch)"
+          echo "cache_mode=min" >> $GITHUB_OUTPUT
+          echo "timeout=30m" >> $GITHUB_OUTPUT
+          echo "Building for AMD64 only (development/PR)"
         fi
 
     - name: Build and push Docker image
@@ -271,13 +284,15 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         platforms: ${{ steps.platforms.outputs.platforms }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-to: type=gha,mode=${{ steps.platforms.outputs.cache_mode }}
         build-args: |
           DEBIAN_FRONTEND=noninteractive
           BUILDKIT_INLINE_CACHE=1
         # Disable provenance and SBOM for faster builds
         provenance: false
         sbom: false
+        # Add timeout to prevent extremely long builds
+        timeout: ${{ steps.platforms.outputs.timeout }}
 
     - name: Generate artifact attestation
       uses: actions/attest-build-provenance@v1
