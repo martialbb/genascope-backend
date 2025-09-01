@@ -1,0 +1,20 @@
+apiVersion: v2
+name: genascope-backend
+description: A Helm chart for Genascope Backend - AI-powered genetic counseling platform
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/martialbb/genascope-backend
+sources:
+  - https://github.com/martialbb/genascope-backend
+maintainers:
+  - name: martialbb
+    email: martial@genascope.com
+keywords:
+  - healthcare
+  - genetics
+  - ai
+  - fastapi
+  - python
+annotations:
+  category: Healthcare

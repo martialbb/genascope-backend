@@ -1,0 +1,195 @@
+# Production environment values for genascope-backend
+# This file overrides the default values.yaml for production
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/martialbb/genascope-backend
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# Production resource constraints (robust)
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+
+# Enable ingress for production with TLS
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: api.genascope.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: genascope-backend-prod-tls
+      hosts:
+        - api.genascope.com
+
+# Application configuration for production
+app:
+  environment: prod
+  
+  database:
+    external: true
+    host: postgres-prod.internal
+    port: 5432
+    name: genascope_prod
+    user: genascope_prod
+    passwordSecret:
+      name: genascope-backend-secrets
+      key: database-password
+  
+  redis:
+    enabled: true
+    host: redis-prod.internal
+    port: 6379
+    
+  apis:
+    openai:
+      secretName: genascope-backend-secrets
+      secretKey: openai-api-key
+    lab:
+      url: "https://lab-api.genascope.com"
+      secretName: genascope-backend-secrets
+      secretKey: lab-api-key
+      
+  smtp:
+    host: "smtp.mailgun.org"
+    port: 587
+    user: "noreply@genascope.com"
+    secretName: genascope-backend-secrets
+    secretKey: smtp-password
+    
+  cors:
+    origins:
+      - "https://genascope.com"
+      - "https://app.genascope.com"
+      - "https://www.genascope.com"
+      
+  frontendUrl: "https://app.genascope.com"
+
+# Enable autoscaling for production
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+
+# No built-in PostgreSQL for production (using managed service)
+postgresql:
+  enabled: false
+
+# No built-in Redis for production (using managed service)
+redis:
+  enabled: false
+
+# Production secrets (should be provided via CI/CD or sealed secrets)
+secrets:
+  databasePassword: ""  # Set via sealed secrets or CI/CD
+  secretKey: ""         # Set via sealed secrets or CI/CD
+  openaiApiKey: ""      # Set via sealed secrets or CI/CD
+  labApiKey: ""         # Set via sealed secrets or CI/CD
+  smtpPassword: ""      # Set via sealed secrets or CI/CD
+
+# Enhanced security context for production
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 3000
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Pod annotations for production
+podAnnotations:
+  environment: "production"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+  prometheus.io/path: "/metrics"
+  backup.velero.io/backup-volumes: "data"
+
+# Node selector for production workloads
+nodeSelector:
+  node-type: "application"
+  performance: "high"
+
+# Tolerations for production workloads
+tolerations:
+  - key: "production-workloads"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+# Anti-affinity for high availability
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - genascope-backend
+      topologyKey: kubernetes.io/hostname
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: node-type
+          operator: In
+          values:
+          - application
+
+# Enhanced health checks for production
+healthChecks:
+  enabled: true
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+
+# Service account with specific annotations for production
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/genascope-backend-role"
+  name: "genascope-backend-prod"

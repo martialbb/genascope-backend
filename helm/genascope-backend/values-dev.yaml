@@ -1,0 +1,131 @@
+# Development environment values for genascope-backend
+# This file overrides the default values.yaml for development
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/martialbb/genascope-backend
+  pullPolicy: Always
+  tag: "latest"
+
+# Development resource constraints
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Enable ingress for development
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: api-dev.genascope.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Application configuration for development
+app:
+  environment: dev
+  
+  database:
+    external: false
+    host: postgresql
+    port: 5432
+    name: genascope
+    user: genascope
+    passwordSecret:
+      name: pgvector-secret
+      key: postgres-password
+  
+  secretKey:
+    secretName: pgvector-secret
+    secretKey: secret-key
+  
+  redis:
+    enabled: true
+    host: redis
+    port: 6379
+    
+  apis:
+    openai:
+      secretName: pgvector-secret
+      secretKey: openai-api-key
+    lab:
+      url: "https://dev-lab-api.genascope.com"
+      secretName: pgvector-secret
+      secretKey: lab-api-key
+      
+  smtp:
+    host: "mailhog"
+    port: 1025
+    user: "dev@genascope.com"
+    secretName: pgvector-secret
+    secretKey: smtp-password
+    
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:4321"
+      - "https://dev.genascope.com"
+      - "http://dev.genascope.local"
+
+  frontendUrl: "http://localhost:4321"
+
+# Enable autoscaling for development (minimal)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# PostgreSQL for development
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "dev-postgres-password"
+    username: "genascope"
+    password: "dev-password"
+    database: "genascope"
+  primary:
+    persistence:
+      enabled: true
+      size: 4Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+
+# Redis for development
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+
+# Development secrets are managed externally via pgvector-secret
+# The pgvector-secret should contain:
+# - postgres-password: PostgreSQL password
+# - secret-key: Application secret key  
+# - openai-api-key: OpenAI API key
+# - lab-api-key: Lab API key (optional)
+# - smtp-password: SMTP password (optional)
+secrets: {}
+
+# Pod annotations for development
+podAnnotations:
+  environment: "development"
+  version: "dev"

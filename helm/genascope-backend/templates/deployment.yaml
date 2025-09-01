@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "genascope-backend.fullname" . }}
+  labels:
+    {{- include "genascope-backend.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "genascope-backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "genascope-backend.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "genascope-backend.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.app.environment | quote }}
+            - name: DATABASE_URI
+              value: "postgresql://{{ .Values.app.database.user }}:$(DATABASE_PASSWORD)@{{ .Values.app.database.host }}:{{ .Values.app.database.port }}/{{ .Values.app.database.name }}"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.database.passwordSecret.name }}
+                  key: {{ .Values.app.database.passwordSecret.key }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.secretKey.secretName | default .Values.app.database.passwordSecret.name }}
+                  key: {{ .Values.app.secretKey.secretKey | default "secret-key" }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.apis.openai.secretName }}
+                  key: {{ .Values.app.apis.openai.secretKey }}
+            {{- if .Values.app.apis.lab.url }}
+            - name: LAB_API_URL
+              value: {{ .Values.app.apis.lab.url | quote }}
+            - name: LAB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.apis.lab.secretName }}
+                  key: {{ .Values.app.apis.lab.secretKey }}
+            {{- end }}
+            - name: FRONTEND_URL
+              value: {{ .Values.app.frontendUrl | quote }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.app.cors.origins | toJson | quote }}
+            {{- if .Values.app.smtp.host }}
+            - name: SMTP_HOST
+              value: {{ .Values.app.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.app.smtp.port | quote }}
+            - name: SMTP_USER
+              value: {{ .Values.app.smtp.user | quote }}
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.smtp.secretName }}
+                  key: {{ .Values.app.smtp.secretKey }}
+            {{- end }}
+            {{- if .Values.app.redis.enabled }}
+            - name: REDIS_URL
+              value: "redis://{{ .Values.app.redis.host }}:{{ .Values.app.redis.port }}"
+            {{- end }}
+          {{- if .Values.healthChecks.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.healthChecks.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.healthChecks.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

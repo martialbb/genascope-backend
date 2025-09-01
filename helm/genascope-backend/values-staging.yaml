@@ -1,0 +1,135 @@
+# Staging environment values for genascope-backend
+# This file overrides the default values.yaml for staging
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/martialbb/genascope-backend
+  pullPolicy: IfNotPresent
+  tag: "staging"
+
+# Staging resource constraints (moderate)
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1.5Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Enable ingress for staging with TLS
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: api-staging.genascope.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: genascope-backend-staging-tls
+      hosts:
+        - api-staging.genascope.com
+
+# Application configuration for staging
+app:
+  environment: staging
+  
+  database:
+    external: true
+    host: postgres-staging.internal
+    port: 5432
+    name: genascope_staging
+    user: genascope_staging
+    passwordSecret:
+      name: genascope-backend-secrets
+      key: database-password
+  
+  redis:
+    enabled: true
+    host: redis-staging.internal
+    port: 6379
+    
+  apis:
+    openai:
+      secretName: genascope-backend-secrets
+      secretKey: openai-api-key
+    lab:
+      url: "https://staging-lab-api.genascope.com"
+      secretName: genascope-backend-secrets
+      secretKey: lab-api-key
+      
+  smtp:
+    host: "smtp.mailgun.org"
+    port: 587
+    user: "staging@genascope.com"
+    secretName: genascope-backend-secrets
+    secretKey: smtp-password
+    
+  cors:
+    origins:
+      - "https://staging.genascope.com"
+      - "https://app-staging.genascope.com"
+      
+  frontendUrl: "https://staging.genascope.com"
+
+# Enable autoscaling for staging
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# No built-in PostgreSQL for staging (using external)
+postgresql:
+  enabled: false
+
+# No built-in Redis for staging (using external)
+redis:
+  enabled: false
+
+# Staging secrets (should be provided via CI/CD or sealed secrets)
+secrets:
+  databasePassword: ""  # Set via CI/CD
+  secretKey: ""         # Set via CI/CD
+  openaiApiKey: ""      # Set via CI/CD
+  labApiKey: ""         # Set via CI/CD
+  smtpPassword: ""      # Set via CI/CD
+
+# Pod annotations for staging
+podAnnotations:
+  environment: "staging"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+  prometheus.io/path: "/metrics"
+
+# Node selector for staging (if needed)
+nodeSelector:
+  node-type: "application"
+
+# Tolerations for staging workloads
+tolerations:
+  - key: "staging-workloads"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+# Anti-affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - genascope-backend
+        topologyKey: kubernetes.io/hostname
