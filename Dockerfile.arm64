@@ -1,6 +1,6 @@
 # ==============================================================================
-# Multi-stage Docker build for genascope-backend
-# Optimized for fast builds across architectures
+# ARM64-optimized Docker build for genascope-backend
+# Uses lightweight dependencies to avoid build time and space issues
 # ==============================================================================
 
 # ---- Build stage ----
@@ -10,58 +10,44 @@ FROM python:3.11-slim AS builder
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PIP_NO_CACHE_DIR=1
 ARG PIP_DISABLE_PIP_VERSION_CHECK=1
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
 
 WORKDIR /app
 
-# Platform-specific optimization
-RUN echo "Building on: $BUILDPLATFORM, for: $TARGETPLATFORM"
-
-# Install build dependencies (kept minimal)
+# Install minimal build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create virtual environment for better dependency isolation
+# Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and install wheel for faster builds + use binary wheels when possible
+# Upgrade pip and install wheel
 RUN pip install --upgrade pip wheel setuptools
 
-# Copy only requirements file first (for better caching)
-COPY requirements.txt ./
+# Copy ARM64-optimized requirements
+COPY requirements.dev.txt ./requirements.txt
 
-# Install Python dependencies with platform-specific optimizations
+# Install Python dependencies with ARM64 optimizations
 RUN --mount=type=cache,target=/root/.cache/pip \
-    # Clean any existing cache first to save space
-    pip cache purge || true && \
-    # Install with aggressive space optimization
     pip install --no-cache-dir \
     --prefer-binary \
-    --find-links https://download.pytorch.org/whl/cpu/torch_stable.html \
-    --no-deps \
-    -r requirements.txt && \
-    # Install dependencies separately to handle conflicts
-    pip install --no-cache-dir --prefer-binary \
-    typing-extensions pydantic-core && \
-    # Clean up any temporary files
-    find /opt/venv -name "*.pyc" -delete && \
-    find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + || true
+    --only-binary=all \
+    -r requirements.txt || \
+    pip install --no-cache-dir \
+    --prefer-binary \
+    -r requirements.txt
 
 # ---- Production stage ----
 FROM python:3.11-slim AS production
 
-# Set runtime arguments
 ARG DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install only runtime dependencies (much smaller)
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     postgresql-client \
@@ -69,7 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Copy virtual environment from builder stage
+# Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 
 # Activate virtual environment
@@ -78,17 +64,16 @@ ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Create non-root user first
+# Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app
 
-# Copy application code with proper ownership
+# Copy application code
 COPY --chown=app:app . .
 
-# Create start script if it doesn't exist
+# Create start script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-# Wait for database to be ready\n\
 if [ -n "$DATABASE_URI" ]; then\n\
     echo "Waiting for database..."\n\
     host=$(echo $DATABASE_URI | sed "s/.*@\\([^:]*\\):.*/\\1/")\n\
@@ -101,13 +86,11 @@ if [ -n "$DATABASE_URI" ]; then\n\
     echo "Database is ready!"\n\
 fi\n\
 \n\
-# Run database migrations\n\
 if [ "$RUN_MIGRATIONS" = "true" ]; then\n\
     echo "Running database migrations..."\n\
     alembic upgrade head\n\
 fi\n\
 \n\
-# Start the application\n\
 exec "$@"' > /app/start.sh && \
     chmod +x /app/start.sh && \
     chown app:app /app/start.sh
@@ -119,9 +102,8 @@ USER app
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
 
-# Expose port 8080
+# Expose port
 EXPOSE 8080
 
-# Default command - start the FastAPI application
+# Default command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
-
