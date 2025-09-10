@@ -25,13 +25,14 @@ data:
   {{- end }}
   
   # SMTP configuration (non-sensitive)
-  {{- if .Values.app.smtp.host }}
+  {{- if and .Values.app.smtp .Values.app.smtp.host }}
   SMTP_HOST: {{ .Values.app.smtp.host | quote }}
   SMTP_PORT: {{ .Values.app.smtp.port | quote }}
   SMTP_USER: {{ .Values.app.smtp.user | quote }}
   {{- end }}
   
   # API URLs
-  {{- if .Values.app.apis.lab.url }}
+  {{- if false }}
+  {{- /* Lab API URL not configured for this deployment */ -}}
   LAB_API_URL: {{ .Values.app.apis.lab.url | quote }}
   {{- end }}

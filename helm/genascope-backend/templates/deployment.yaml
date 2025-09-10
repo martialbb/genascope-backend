@@ -45,32 +45,55 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
+                  {{- if .Values.sealedSecrets.enabled }}
+                  name: {{ include "genascope-backend.fullname" . }}-secrets
+                  key: postgres-password
+                  {{- else }}
                   name: {{ .Values.app.database.passwordSecret.name }}
                   key: {{ .Values.app.database.passwordSecret.key }}
+                  {{- end }}
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
+                  {{- if .Values.sealedSecrets.enabled }}
+                  name: {{ include "genascope-backend.fullname" . }}-secrets
+                  key: secret-key
+                  {{- else }}
                   name: {{ .Values.app.secretKey.secretName | default .Values.app.database.passwordSecret.name }}
                   key: {{ .Values.app.secretKey.secretKey | default "secret-key" }}
+                  {{- end }}
+            {{- if .Values.sealedSecrets.enabled }}
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.app.apis.openai.secretName }}
-                  key: {{ .Values.app.apis.openai.secretKey }}
-            {{- if .Values.app.apis.lab.url }}
+                  name: {{ include "genascope-backend.fullname" . }}-secrets
+                  key: openai-api-key
+            {{- end }}
+            {{- if false }}
+            {{- /* Lab API not configured for this deployment */ -}}
             - name: LAB_API_URL
               value: {{ .Values.app.apis.lab.url | quote }}
             - name: LAB_API_KEY
               valueFrom:
                 secretKeyRef:
+                  {{- if .Values.sealedSecrets.enabled }}
+                  name: {{ include "genascope-backend.fullname" . }}-secrets
+                  key: lab-api-key
+                  {{- else }}
                   name: {{ .Values.app.apis.lab.secretName }}
                   key: {{ .Values.app.apis.lab.secretKey }}
+                  {{- end }}
             {{- end }}
+            - name: LAB_API_URL
+              value: "https://placeholder-lab-api.example.com"
+            - name: LAB_API_KEY
+              value: "placeholder-lab-api-key"
             - name: FRONTEND_URL
               value: {{ .Values.app.frontendUrl | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.app.cors.origins | toJson | quote }}
-            {{- if .Values.app.smtp.host }}
+            {{- if false }}
+            {{- /* SMTP not configured for this deployment */ -}}
             - name: SMTP_HOST
               value: {{ .Values.app.smtp.host | quote }}
             - name: SMTP_PORT
@@ -80,10 +103,15 @@ spec:
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
+                  {{- if .Values.sealedSecrets.enabled }}
+                  name: {{ include "genascope-backend.fullname" . }}-secrets
+                  key: smtp-password
+                  {{- else }}
                   name: {{ .Values.app.smtp.secretName }}
                   key: {{ .Values.app.smtp.secretKey }}
+                  {{- end }}
             {{- end }}
-            {{- if .Values.app.redis.enabled }}
+            {{- if and .Values.app.redis .Values.app.redis.enabled }}
             - name: REDIS_URL
               value: "redis://{{ .Values.app.redis.host }}:{{ .Values.app.redis.port }}"
             {{- end }}

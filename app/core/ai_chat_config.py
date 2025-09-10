@@ -253,11 +253,11 @@ class AIChatSettings:
             return False
         
         try:
-            import openai
-            openai.api_key = self.ai.openai_api_key
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=self.ai.openai_api_key)
             
             # Make a minimal test request
-            response = await openai.ChatCompletion.acreate(
+            response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",  # Use cheaper model for testing
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=1,

@@ -120,9 +120,43 @@ helm install genascope-backend ./helm/genascope-backend \
 
 ## Secrets Management
 
-The chart requires several secrets to be configured:
+The chart supports multiple approaches for managing secrets:
 
-### Required Secrets
+### Option 1: Sealed Secrets (Recommended for GitOps)
+
+Sealed Secrets allow you to encrypt secrets and store them safely in Git repositories. This is the recommended approach for GitOps workflows.
+
+See [SEALED_SECRETS.md](./SEALED_SECRETS.md) for detailed implementation guide.
+
+Quick start:
+```bash
+# Generate encrypted secrets interactively
+./scripts/generate-sealed-secrets.sh --namespace development --interactive
+
+# Deploy with sealed secrets
+./scripts/deploy-sealed-secrets.sh --namespace development
+```
+
+### Option 2: External Secrets (Current)
+
+Use existing Kubernetes secrets created outside the chart:
+
+```yaml
+# values-dev.yaml (current approach)
+app:
+  database:
+    passwordSecret:
+      name: "pgvector-secret"
+      key: "postgres-password"
+  apis:
+    openai:
+      secretName: "openai-secret"
+      secretKey: "api-key"
+```
+
+### Option 3: Direct Secret Creation
+
+For development or CI/CD environments, you can create secrets directly:
 
 ```yaml
 secrets:

@@ -1,0 +1,93 @@
+# Configuration for Sealed Secrets - DEV Environment
+# This file contains real encrypted secrets for the dev namespace
+
+# Enable sealed secrets
+sealedSecrets:
+  enabled: true
+  # Encrypted values generated for dev namespace with strict scope
+  encryptedData:
+    postgres-password: AgAVIcNxPKzYMK3HEZipcaF2M7vRFmCwWoD1Vl3jNpmoB0uqKKSmSDJjlbT9WNOAI4mWmw5u2PcMoEZsn1xt0fLCw37aDDl35emKuIiaFROALuoRBPQ1UQD0ymslUL50hjvCJ9ynUodmDh6dmI3GES0IjnC3LXg6Jab0W6bYiudUwHpJNWUpk2PIgjCYq3W9gZNciD1S1HyPixzasz0wfjyfAxHdxWhaR4x5SVuFPnZq/qkkCLC0groEESl2QEuC0+EdgoycpwDMR5frHKBbujKN7qRCptEXb0spw5WnKsgXXdmmFxsQnC40Rd25+mSuusO8Q4rKPf9fSa9IhOThfx4PJBSORRK/sXA9xUIdMYTXbKJgAcuFvlObSMobGMAcvzwQz7BeZDcsppOv9d+5Pf9v3ILSoeUYntqElGn8yPd77NMSP4U+RLaUg0re7nDQfsefZOk7q8APoShl6kTxXmMFnBebXCNH51mtXgegqfV58eYKZA+5gl5CyJnJy0E9+KyHx7oPuMlRnfeNKjlXANiITFpjBrthQ0PPi2sMtgwOq3xlndlkskiYWcF4W7qyV6ZQJtRTdSFqf+ucmzKWPgt+E+QIeMxA3xQ40UCRZrRL33nmrvKxCTN32sEtg/zrWtnhiAGMID7Qy9i52Y4VSn7Av8ugRSYG5BT5orzV8+DMqdlYAVd3YZdd0Tnr1vrMZxzyMGRcYMiyMKw=%
+    secret-key: AgAMYr8FJbHR263uM26drvKQ7lTSsPVTim7n4X/dBlYgpxxWheEci4h9j7g0O/CNIeozhiyIVnLtVvmCBu1d/TvS9qmC11Z7jXmjskNgOp8QuHvUVTN+8B/g00rJ89S92zBwhPGUGN2DUkmL/DSVTDRVL2REfAkozb1SAk5lHBvNzfjBvbpntLQIxWPQfudBHTvDrL5oM0Mk/JuoEaKclGThliW5Zawkbusn0njO+uSlzkFkulRvB8zyzA8/VvHXZeuT3rLNSL4a3xLiQ9rIKIWRx+UZel0LZYvu9iyv0BjYR7l3/QW4SuFXPuAzYd8qDH5YY0IHrq09gKY4zceUdlsmlZExFA6Gd7mmDXnSwlXrlkYjddNMckLaJMTxjzINTjXrSSWEvuHsUbMSl/cytxYi9Qw3ExIKfKF6DgKWRh0s9Xhqin6zAhjbWerTPxLN8HRWqAM+iNz45m28UQadIDEO8alX93WL477HE45LWcn7uFtEOhAw6htCJMDzy9PmoVa8MUnNDwW3pflY54DZwbJNeV/DQaepbybRm8Ou4Z+JoxJjBJhX1J4eTYoQxEHZQ2woeyehWDixu2wvVhoFU1nuJQV9cCx73UTuHLgIBwDan6+xMJws6wXVvch9EMONl+fpX4fFTlLt373FrpDZ0MZo+myRT66y+kzN53Fyhj9MsECl/j+pcEuLSGIITmAQH4eyjP4vDg/kBf1Y/OVTmmJbK6aVmtTHt/F8IUAs12scCQ==%
+
+# Application configuration (same as other environments)
+app:
+  environment: "development"
+  frontendUrl: "http://localhost:3000"
+  
+  database:
+    host: "postgresql"
+    port: 5432
+    name: "genascope"
+    user: "genascope"
+  
+  apis:
+    # OpenAI API configuration (not configured yet)
+    # When you get an OpenAI API key, encrypt it with:
+    # ./manual-encrypt.sh dev openai-api-key 'sk-your-api-key'
+    # Then uncomment and update the encryptedData section above
+  
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "https://genascope.dev"
+
+# Image configuration
+image:
+  repository: "ghcr.io/martialbb/genascope-backend"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Image pull secrets for private registry access
+imagePullSecrets:
+  - name: ghcr-secret
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: api-dev.genascope.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# Health checks
+healthChecks:
+  enabled: true
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

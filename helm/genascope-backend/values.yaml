@@ -4,6 +4,14 @@
 
 replicaCount: 1
 
+# Sealed Secrets configuration
+# Set enabled: true to use Sealed Secrets instead of external secrets
+sealedSecrets:
+  enabled: false
+  # Encrypted data will be populated by kubeseal
+  # Use the generate-sealed-secrets.sh script to create these values
+  encryptedData: {}
+
 image:
   repository: ghcr.io/martialbb/genascope-backend
   pullPolicy: IfNotPresent

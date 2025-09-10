@@ -1,0 +1,60 @@
+# Temporary ARM64 values override
+# Use this until the ARM64 image is built and pushed
+
+image:
+  repository: "ghcr.io/martialbb/genascope-backend"
+  tag: "arm64-latest"  # Use ARM64 specific tag
+  pullPolicy: IfNotPresent
+
+# Copy the working sealed secrets configuration
+sealedSecrets:
+  enabled: true  # Enable sealed secrets to include OpenAI configuration
+  encryptedData:
+    openai-api-key: "AgBGjIokUOBCnu2UjRcDdewCEFxHaJ11H4imwRuOlH40p7LMUoGmIpPT1YLHPtsvpW4Qb9tbW4msmpMZxCUzPRZS27Cf8PXb5L7ICTDX8VHz9eb9E5H1Ja/phEw77XItR2mW69yaJ/vfiKjmYOuPRizSJER7emJOA9L8rd+F1v25TWByiXi9syQOzDQbg/fybazhHX+Y97oR1cku2kboYS70M39QIBN6+nyn5y8gsBTUWOE4tDYL1DoAzu9oysMcwh27szU6i00ruUFPZj2/7r/ypEHKRzq0YvrCbppRSvGbyHcl94jIkltu7gtF+s7q/mS4ysScU9SJ7m+q506Qka0XxT6p8/rBOre6px1j246BmFldS3MPjW5aA7Vxdhd/4p9G9Ydy6orXcXALTmjgLuIfi/NyO4+wxOIb6LeOAZhgUaxkTrjeHR/1UtXZ1k7TE0MZIhpCeVdl4HMyDcJWOtFoNJ+In4R4KFRMyBMZW5PS9UFwGtWeMj40RvHEHf2Jl6as4ZAywxooNNe+n5U9oo86SRNvHxNXAAB/fNsVH1p1wMPhBbftzlO1NYPoBOQlYjWvOKkSidQoL+bAqZuuOnAMC9yOWom+T1SUXc8UMk1+8BTk6QQBjO9s1C1RqKhuNJfySDXZb2nZfv0CBWRnOygwfMK0/ZjMZttiOcanHpREdtupyueLmPerOAm0r0VcDnqoPWUUY0QIvULqI1/RKuIKxSkc/X4HRzwhzqPz25To3PJ8oc1oBJcle8rX0EOGqZzHR5JcuHhyA89RbYSJ9SLXkQIPSpbeAQeVJwtTauYXCOTYwo8cm7k6Ha40hjCT85brAa06cPcg+xohNiPR+Vvo0A9U5zWXtxVnySYrtXL5m4uGUjfyth4P0udVDJX5+CA9ioE8pEIZxg9qauRwLM5A7Y3yZg=="
+
+app:
+  environment: "development"
+  frontendUrl: "http://localhost:3000"
+  
+  database:
+    host: "pgvector-pgvector-chart-external"
+    port: 5432
+    name: "genascope"
+    user: "genascope"
+    passwordSecret:
+      name: pgvector-secret
+      key: postgres-password
+  
+  secretKey:
+    secretName: genascope-backend-secrets
+    secretKey: secret-key
+  
+  apis:
+    lab:
+      url: "https://placeholder-lab-api.example.com"
+      secretName: genascope-backend-secrets
+      secretKey: lab-api-key
+  
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "https://genascope.dev"
+
+imagePullSecrets:
+  - name: ghcr-secret
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: api-dev.genascope.local
+      paths:
+        - path: /
+          pathType: Prefix

@@ -8,13 +8,14 @@ from app.db.database import get_db
 from app.services.users import UserService
 from app.schemas.users import UserRole, UserCreate, UserResponse, UserInDB
 from app.schemas.common import Token, TokenData
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# JWT Configuration
-SECRET_KEY = "genascope_development_secret_key"  # In production, use a proper secret key
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+# JWT Configuration - Read from environment settings
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM  
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 # OAuth2 password bearer token URL
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
