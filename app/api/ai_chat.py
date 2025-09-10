@@ -54,13 +54,21 @@ async def start_chat_session(
             session.id
         )
         
-        # Get message count for response
+        # Get message count and initial message for response
         messages = chat_engine.get_session_messages(session.id)
+        
+        # Get the initial AI message (should be the first assistant message)
+        initial_message = None
+        for message in messages:
+            if message.role == 'assistant':
+                initial_message = message.content
+                break
         
         # Convert to response model
         session_response = ChatSessionResponse.from_orm(session)
         session_response.message_count = len(messages)
         session_response.progress_percentage = 0.0
+        session_response.initial_message = initial_message
         
         return session_response
         

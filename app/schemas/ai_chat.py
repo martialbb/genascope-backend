@@ -73,6 +73,7 @@ class ChatSessionResponse(BaseModel):
     # Computed fields
     message_count: Optional[int] = Field(None, description="Total number of messages in session")
     progress_percentage: Optional[float] = Field(None, description="Completion progress (0-100)")
+    initial_message: Optional[str] = Field(None, description="Initial proactive message from AI assistant")
 
     class Config:
         from_attributes = True

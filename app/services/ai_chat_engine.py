@@ -295,19 +295,41 @@ class ChatEngineService:
             print(f"Error setting up session context: {str(e)}")
     
     def _generate_welcome_message(self, strategy: ChatStrategy) -> str:
-        """Generate welcome message based on strategy configuration.
+        """Generate proactive welcome message based on strategy configuration.
+        
+        This creates an initial proactive message where the AI takes the lead
+        in starting the conversation based on the chat strategy.
         
         Args:
             strategy: ChatStrategy object
             
         Returns:
-            Welcome message string
+            Proactive welcome message string
         """
-        # Use system_prompt if available, otherwise generate a default message
-        if hasattr(strategy, 'system_prompt') and strategy.system_prompt:
-            return f"Hello! I'm here to help with {strategy.name.lower()}. Let's get started."
+        # Generate strategy-specific proactive messages
+        strategy_name = strategy.name.lower()
         
-        return f"Hello! I'm here to help with {strategy.name.lower()}. How can I assist you today?"
+        if 'gastroenterology' in strategy_name or 'gastro' in strategy_name:
+            return ("Hello! I'm here to help assess your digestive health. I'd like to ask you a few questions "
+                   "about any symptoms you might be experiencing. Let's start with: Have you been experiencing "
+                   "any abdominal pain, changes in bowel habits, or digestive discomfort recently?")
+        elif 'cardiology' in strategy_name or 'heart' in strategy_name:
+            return ("Hello! I'm here to help evaluate your cardiovascular health. I'll be asking some questions "
+                   "about your heart health and any symptoms you might have. To begin: Have you experienced "
+                   "any chest pain, shortness of breath, or heart palpitations lately?")
+        elif 'oncology' in strategy_name or 'cancer' in strategy_name:
+            return ("Hello! I'm here to help with your health assessment. I'll be asking some important questions "
+                   "about your health history and any symptoms. Let's start: Have you noticed any unusual "
+                   "changes in your body, such as lumps, persistent fatigue, or unexplained weight loss?")
+        elif 'screening' in strategy_name:
+            return ("Hello! I'm here to conduct a health screening assessment with you. I'll ask you several "
+                   "questions to better understand your current health status. Let's begin: How would you "
+                   "describe your overall health right now?")
+        else:
+            # Generic proactive message
+            return (f"Hello! I'm here to help with your {strategy.name.lower()} assessment. I'll be asking "
+                   f"you some questions to better understand your health status. Shall we get started with "
+                   f"your current symptoms or concerns?")
     
     async def _generate_ai_response(self, session: AIChatSession, user_message: str, context: str = "") -> Dict[str, Any]:
         """Generate AI response using OpenAI API and configured strategy.
