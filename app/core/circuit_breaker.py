@@ -154,14 +154,22 @@ class AIServiceCircuitBreaker(CircuitBreaker):
         recovery_timeout: int = 60
     ):
         # Common AI service exceptions that should trigger circuit breaker
-        import openai
-        expected_exceptions = (
-            openai.error.ServiceUnavailableError,
-            openai.error.APIError,
-            openai.error.RateLimitError,
-            ConnectionError,
-            TimeoutError,
-        )
+        try:
+            from openai import OpenAIError, RateLimitError, APIError
+            expected_exceptions = (
+                OpenAIError,
+                RateLimitError,
+                APIError,
+                ConnectionError,
+                TimeoutError,
+            )
+        except ImportError:
+            # Fallback if OpenAI package not available
+            expected_exceptions = (
+                ConnectionError,
+                TimeoutError,
+                Exception,
+            )
         
         super().__init__(
             failure_threshold=failure_threshold,

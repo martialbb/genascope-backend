@@ -21,9 +21,8 @@ class RAGService(BaseService):
     """Service for knowledge retrieval and vector similarity search."""
     
     def __init__(self, db: Session):
-        super().__init__(db)
-        self.db = db
-        self.ai_chat_repo = AIChatRepository(db)
+        super().__init__(db, AIChatRepository)
+        self.ai_chat_repo = self.repository
         self.settings = get_ai_chat_settings()
     
     async def index_knowledge_source(self, knowledge_source: KnowledgeSource) -> None:

@@ -141,10 +141,8 @@ async def startup_event():
             rag_service = RAGService(next(get_db()))
             logger.info("RAG service initialized")
             
-            from app.services.knowledge_processing import KnowledgeProcessingService
-            knowledge_service = KnowledgeProcessingService(next(get_db()))
-            await knowledge_service.process_pending_sources()
-            logger.info("Knowledge processing service initialized")
+            # TODO: Knowledge processing service will be added later
+            logger.info("Knowledge processing service skipped (not implemented)")
             
         except Exception as e:
             error_msg = f"Failed to initialize AI services: {e}"

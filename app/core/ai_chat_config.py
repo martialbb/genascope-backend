@@ -21,7 +21,7 @@ class AIConfig(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
-    openai_model: str = Field("gpt-4", env="OPENAI_MODEL")
+    openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
     openai_temperature: float = Field(0.7, env="OPENAI_TEMPERATURE")
     openai_max_tokens: int = Field(500, env="OPENAI_MAX_TOKENS")
     
@@ -31,7 +31,7 @@ class AIConfig(BaseSettings):
     langchain_tracing_v2: bool = Field(True, env="LANGCHAIN_TRACING_V2")
     
     # Model fallback configuration
-    backup_model: str = Field("gpt-3.5-turbo", env="BACKUP_MODEL")
+    backup_model: str = Field("gpt-4o-mini", env="BACKUP_MODEL")
     max_retries: int = Field(3, env="AI_MAX_RETRIES")
     request_timeout: int = Field(30, env="AI_REQUEST_TIMEOUT")
     
@@ -258,7 +258,7 @@ class AIChatSettings:
             
             # Make a minimal test request
             response = await client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Use cheaper model for testing
+                model="gpt-4o-mini",  # Use efficient model for testing
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=1,
                 timeout=5
@@ -360,7 +360,7 @@ ai_chat_settings = AIChatSettings()
 BRCA_SCREENING_CONFIG = {
     "strategy_name": "BRCA Risk Assessment",
     "ai_model_config": {
-        "model_name": "gpt-4",
+        "model_name": "gpt-5-nano",
         "temperature": 0.7,
         "max_tokens": 400
     },
@@ -420,7 +420,7 @@ BRCA_SCREENING_CONFIG = {
 CARDIAC_RISK_CONFIG = {
     "strategy_name": "Cardiac Risk Assessment",
     "ai_model_config": {
-        "model_name": "gpt-4",
+        "model_name": "gpt-5-nano",
         "temperature": 0.6,
         "max_tokens": 350
     },

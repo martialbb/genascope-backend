@@ -108,12 +108,23 @@ fi
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
+# Detect architecture and select appropriate Dockerfile
+ARCH=$(uname -m)
+DOCKERFILE="Dockerfile"
+if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+    DOCKERFILE="Dockerfile.arm64"
+    log_info "Detected ARM64 architecture, using $DOCKERFILE"
+else
+    log_info "Using default $DOCKERFILE for architecture: $ARCH"
+fi
+
 # Build the image
 log_info "Starting Docker build..."
 start_time=$(date +%s)
 
 if docker build \
     $BUILD_ARGS \
+    --file "$DOCKERFILE" \
     --target production \
     --tag "$FULL_IMAGE_NAME" \
     --build-arg BUILDKIT_INLINE_CACHE=1 \
