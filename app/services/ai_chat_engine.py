@@ -5,6 +5,7 @@ This service orchestrates AI-powered chat conversations by coordinating
 between repositories, managing conversation flow, and handling AI responses.
 """
 import uuid
+import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -17,6 +18,8 @@ from app.models.ai_chat import (
 )
 from app.models.chat_configuration import ChatStrategy
 from app.core.ai_chat_config import get_ai_chat_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ChatEngineService:
@@ -154,9 +157,8 @@ class ChatEngineService:
             })
             session.extracted_data = updated_extracted_data
         
-        # Get relevant context from knowledge sources (temporarily disabled)
-        # This will use RAG service when implemented
-        context = ""  
+        # Get relevant context from knowledge sources using RAG
+        context = await self._get_knowledge_context(session, user_message)
         
         # Generate AI response
         ai_response = await self._generate_ai_response(session, user_message, context)
@@ -308,7 +310,7 @@ class ChatEngineService:
         return f"Hello! I'm here to help with {strategy.name.lower()}. How can I assist you today?"
     
     async def _generate_ai_response(self, session: AIChatSession, user_message: str, context: str = "") -> Dict[str, Any]:
-        """Generate AI response using configured strategy.
+        """Generate AI response using OpenAI API and configured strategy.
         
         Args:
             session: Current chat session
@@ -318,28 +320,68 @@ class ChatEngineService:
         Returns:
             Dictionary with AI response content and metadata
         """
+        import time
+        start_time = time.time()
+        
         # Get strategy for response configuration
         strategy = self.ai_chat_repo.get_strategy_by_id(session.strategy_id)
         
-        # TODO: This is a placeholder implementation
-        # In production, this would integrate with:
-        # - OpenAI/LLM APIs for response generation
-        # - Strategy-specific prompts and configurations
-        # - Knowledge base context integration
-        # - Response personalization based on extracted data
-        
-        response_content = self._get_contextual_response(user_message, session, strategy, context)
-        
-        return {
-            "content": response_content,
-            "confidence": 0.9,  # Default confidence score
-            "metadata": {
-                "response_type": "contextual",
-                "strategy_id": strategy.id,
-                "message_count": len(session.messages) + 1,
-                "has_context": bool(context)
+        try:
+            # Use OpenAI API for response generation
+            from openai import AsyncOpenAI
+            from app.core.ai_chat_config import get_ai_chat_config
+            
+            config = get_ai_chat_config()
+            client = AsyncOpenAI(api_key=config.ai.openai_api_key)
+            
+            # Build conversation history
+            messages = self._build_conversation_history(session, user_message, context, strategy)
+            
+            # Make OpenAI API call
+            response = await client.chat.completions.create(
+                model=config.ai.openai_model,
+                messages=messages,
+                max_tokens=config.ai.openai_max_tokens,
+                temperature=config.ai.openai_temperature
+            )
+            
+            response_content = response.choices[0].message.content
+            response_time = int((time.time() - start_time) * 1000)
+            
+            return {
+                "content": response_content,
+                "confidence": 0.95,
+                "metadata": {
+                    "response_type": "ai_generated",
+                    "strategy_id": strategy.id,
+                    "strategy_name": strategy.name,
+                    "message_count": len(session.messages) + 1,
+                    "has_context": bool(context),
+                    "response_time_ms": response_time,
+                    "model_used": config.ai.openai_model,
+                    "tokens_used": response.usage.total_tokens if response.usage else None
+                }
             }
-        }
+            
+        except Exception as e:
+            logger.warning(f"OpenAI API call failed: {e}. Using fallback response.")
+            # Fallback to rule-based response if OpenAI fails
+            response_content = self._get_contextual_response(user_message, session, strategy, context)
+            response_time = int((time.time() - start_time) * 1000)
+            
+            return {
+                "content": response_content,
+                "confidence": 0.7,
+                "metadata": {
+                    "response_type": "fallback",
+                    "strategy_id": strategy.id,
+                    "strategy_name": strategy.name,
+                    "message_count": len(session.messages) + 1,
+                    "has_context": bool(context),
+                    "response_time_ms": response_time,
+                    "error": str(e)
+                }
+            }
     
     def _get_contextual_response(self, user_message: str, session: AIChatSession, strategy: ChatStrategy, context: str) -> str:
         """Generate contextual response using available information.
@@ -407,3 +449,126 @@ class ChatEngineService:
         # Return appropriate question based on message count
         question_index = min((message_count - 2) // 2, len(questions_flow) - 1)
         return questions_flow[question_index]
+
+    def _build_conversation_history(self, session: AIChatSession, user_message: str, context: str, strategy: ChatStrategy) -> List[Dict[str, str]]:
+        """Build conversation history for OpenAI API call.
+        
+        Args:
+            session: Current chat session
+            user_message: Current user message
+            context: Knowledge source context
+            strategy: Chat strategy configuration
+            
+        Returns:
+            List of message dictionaries for OpenAI API
+        """
+        messages = []
+        
+        # System prompt based on strategy
+        system_prompt = self._build_system_prompt(strategy, context)
+        messages.append({"role": "system", "content": system_prompt})
+        
+        # Add conversation history (last 10 messages to stay within token limits)
+        recent_messages = session.messages[-10:] if len(session.messages) > 10 else session.messages
+        
+        for msg in recent_messages:
+            if msg.role == "user":
+                messages.append({"role": "user", "content": msg.content})
+            elif msg.role == "assistant":
+                messages.append({"role": "assistant", "content": msg.content})
+        
+        # Add current user message
+        messages.append({"role": "user", "content": user_message})
+        
+        return messages
+    
+    def _build_system_prompt(self, strategy: ChatStrategy, context: str) -> str:
+        """Build system prompt based on strategy and available context.
+        
+        Args:
+            strategy: Chat strategy configuration
+            context: Knowledge source context
+            
+        Returns:
+            System prompt string
+        """
+        base_prompt = f"""You are a helpful medical AI assistant specializing in {strategy.name}. 
+You provide accurate, evidence-based medical guidance while emphasizing that patients should consult healthcare providers for diagnosis and treatment.
+
+Your role is to:
+- Ask relevant questions to understand the patient's situation
+- Provide educational information based on medical guidelines
+- Recommend appropriate screening or risk assessment when indicated
+- Always emphasize the importance of consulting healthcare professionals
+
+Guidelines:
+- Be empathetic and professional
+- Ask one question at a time to gather information systematically
+- Provide specific, actionable guidance when appropriate
+- Reference medical guidelines when relevant
+- Always recommend consulting healthcare providers for diagnosis and treatment"""
+
+        if context:
+            base_prompt += f"\n\nRelevant medical guidelines and information:\n{context[:1000]}..."
+        
+        if strategy.description:
+            base_prompt += f"\n\nStrategy focus: {strategy.description}"
+            
+            return base_prompt
+    
+    async def _get_knowledge_context(self, session: AIChatSession, user_message: str) -> str:
+        """Retrieve relevant context from knowledge sources using RAG.
+        
+        Args:
+            session: Current chat session
+            user_message: User's message content
+            
+        Returns:
+            Relevant context string from knowledge sources
+        """
+        try:
+            # Get strategy with knowledge sources
+            strategy = self.ai_chat_repo.get_strategy_by_id(session.strategy_id)
+            
+            if not strategy or not strategy.knowledge_sources:
+                return ""
+            
+            # Simple keyword-based retrieval for now
+            # In production, this would use vector embeddings and similarity search
+            context_parts = []
+            
+            for knowledge_source in strategy.knowledge_sources:
+                if knowledge_source.source_type == "file" and knowledge_source.content:
+                    # Simple text search in knowledge source content
+                    content = knowledge_source.content.lower()
+                    message_lower = user_message.lower()
+                    
+                    # Check for relevant keywords
+                    relevant_keywords = [
+                        "brca", "breast cancer", "screening", "mammogram", "mri",
+                        "genetic", "hereditary", "family history", "risk assessment",
+                        "guidelines", "nccn", "recommendation"
+                    ]
+                    
+                    relevant_score = sum(1 for keyword in relevant_keywords if keyword in message_lower)
+                    
+                    if relevant_score > 0:
+                        # Extract relevant sections (simplified)
+                        sentences = knowledge_source.content.split('.')
+                        relevant_sentences = []
+                        
+                        for sentence in sentences[:50]:  # Limit to first 50 sentences
+                            sentence_lower = sentence.lower()
+                            if any(keyword in sentence_lower for keyword in relevant_keywords):
+                                relevant_sentences.append(sentence.strip())
+                                if len(relevant_sentences) >= 5:  # Limit context size
+                                    break
+                        
+                        if relevant_sentences:
+                            context_parts.append(f"From {knowledge_source.name}:\n" + "\n".join(relevant_sentences))
+            
+            return "\n\n".join(context_parts)
+            
+        except Exception as e:
+            logger.warning(f"Failed to retrieve knowledge context: {e}")
+            return ""
