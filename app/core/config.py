@@ -30,12 +30,41 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:4321"]
     
+    @property
+    def DYNAMIC_CORS_ORIGINS(self) -> List[str]:
+        """Get CORS origins including environment-specific frontend URL"""
+        base_origins = self.CORS_ORIGINS.copy()
+        # Add the frontend URL for the current environment
+        frontend_url = self.frontend_url
+        if frontend_url not in base_origins:
+            base_origins.append(frontend_url)
+        return base_origins
+    
     # Lab API
     LAB_API_KEY: str
     LAB_API_URL: str
     
-    # Frontend URL (for invite links, etc.)
-    FRONTEND_URL: str = "http://localhost:4321"
+    # Environment configuration
+    ENVIRONMENT: str = "development"  # development, staging, production
+    
+    # Frontend URL (for invite links, etc.) - can be overridden by environment variable
+    FRONTEND_URL: str = ""
+    
+    @property
+    def frontend_url(self) -> str:
+        """Get environment-specific frontend URL"""
+        # If FRONTEND_URL is explicitly set and not localhost, use it
+        if self.FRONTEND_URL and not self.FRONTEND_URL.startswith("http://localhost"):
+            return self.FRONTEND_URL
+            
+        # Otherwise, determine based on environment
+        if self.ENVIRONMENT.lower() in ["staging"]:
+            return "https://chat-staging.genascope.com"
+        elif self.ENVIRONMENT.lower() in ["production", "prod"]:
+            return "https://chat.genascope.com"
+        else:
+            # Default to dev for development and any unknown environments
+            return "https://chat-dev.genascope.com"
     
     # File upload configuration
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB default

@@ -95,3 +95,70 @@ class AppointmentRepository:
         """
         self.db.commit()
         return appointment
+    
+    def list_organization_appointments(
+        self,
+        account_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        status_filter: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        clinician_id: Optional[str] = None,
+        patient_id: Optional[str] = None
+    ) -> dict:
+        """
+        List appointments for an organization with pagination and filters
+        """
+        from app.models.patient import Patient
+        from app.models.user import User
+        from sqlalchemy import or_
+        
+        # Start with base query joining both patients and clinicians to filter by account
+        # An appointment belongs to an organization if either the patient OR the clinician belongs to that organization
+        query = self.db.query(Appointment).outerjoin(
+            Patient, Appointment.patient_id == Patient.id
+        ).outerjoin(
+            User, Appointment.clinician_id == User.id
+        ).filter(
+            or_(
+                Patient.account_id == account_id,
+                User.account_id == account_id
+            )
+        )
+        
+        # Apply filters
+        if status_filter:
+            query = query.filter(Appointment.status == status_filter)
+            
+        if date_from:
+            query = query.filter(func.date(Appointment.date_time) >= date_from)
+            
+        if date_to:
+            query = query.filter(func.date(Appointment.date_time) <= date_to)
+            
+        if clinician_id:
+            query = query.filter(Appointment.clinician_id == clinician_id)
+            
+        if patient_id:
+            query = query.filter(Appointment.patient_id == patient_id)
+        
+        # Order by appointment date and time (most recent first)
+        query = query.order_by(Appointment.date_time.desc())
+        
+        # Get total count before pagination
+        total_count = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * page_size
+        appointments = query.offset(offset).limit(page_size).all()
+        
+        # Eager load related patient data to avoid N+1 queries
+        for appointment in appointments:
+            # Force load the patient relationship
+            _ = appointment.patient
+        
+        return {
+            "appointments": appointments,
+            "total_count": total_count
+        }

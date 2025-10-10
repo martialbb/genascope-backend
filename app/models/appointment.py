@@ -12,7 +12,7 @@ class Appointment(Base):
     
     id = Column(String(36), primary_key=True)
     clinician_id = Column(String(36), index=True)
-    patient_id = Column(String(36), index=True)
+    patient_id = Column(String(36), ForeignKey("patients.id"), index=True)
     date_time = Column(DateTime, nullable=False)  # Match actual DB schema
     appointment_type = Column(String(20), default="virtual")
     status = Column(String(20), default="scheduled")
@@ -20,6 +20,9 @@ class Appointment(Base):
     confirmation_code = Column(String(10), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    patient = relationship("Patient", foreign_keys=[patient_id], backref="appointments")
 
 class Availability(Base):
     __tablename__ = "clinician_availability"

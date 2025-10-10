@@ -196,3 +196,36 @@ class AppointmentRescheduling(BaseModel):
     reason: Optional[str] = None
     notify_patient: bool = True
     notify_clinician: bool = True
+
+
+class OrganizationAppointmentResponse(BaseModel):
+    """Schema for appointment responses in organization context"""
+    id: str
+    clinician_id: str
+    clinician_name: str
+    patient_id: str
+    patient_name: str
+    patient_email: Optional[str] = None
+    date: date
+    time: time
+    appointment_type: AppointmentType
+    status: AppointmentStatus
+    notes: Optional[str] = None
+    confirmation_code: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrganizationAppointmentListResponse(BaseModel):
+    """Schema for paginated appointment list response for organization"""
+    appointments: List[OrganizationAppointmentResponse]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+
+    model_config = ConfigDict(from_attributes=True)

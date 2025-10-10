@@ -17,7 +17,8 @@ from .appointments import (
     AvailabilityRequest, AvailabilityListResponse, RecurringAvailabilityBase,
     RecurringAvailabilityCreate, RecurringAvailabilityResponse, AppointmentBase,
     AppointmentCreate, AppointmentUpdate, AppointmentResponse, AppointmentSummary,
-    AppointmentType, AppointmentStatus, AppointmentCancellation, AppointmentRescheduling
+    AppointmentType, AppointmentStatus, AppointmentCancellation, AppointmentRescheduling,
+    OrganizationAppointmentResponse, OrganizationAppointmentListResponse
 )
 
 # Import lab schemas
@@ -72,6 +73,7 @@ __all__ = [
     "RecurringAvailabilityCreate", "RecurringAvailabilityResponse", "AppointmentBase",
     "AppointmentCreate", "AppointmentUpdate", "AppointmentResponse", "AppointmentSummary",
     "AppointmentType", "AppointmentStatus", "AppointmentCancellation", "AppointmentRescheduling",
+    "OrganizationAppointmentResponse", "OrganizationAppointmentListResponse",
     
     # Lab schemas
     "TestType", "OrderStatus", "LabOrderBase", "LabOrderCreate", "LabOrderUpdate",

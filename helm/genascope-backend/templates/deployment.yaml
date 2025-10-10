@@ -88,8 +88,6 @@ spec:
               value: "https://placeholder-lab-api.example.com"
             - name: LAB_API_KEY
               value: "placeholder-lab-api-key"
-            - name: FRONTEND_URL
-              value: {{ .Values.app.frontendUrl | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.app.cors.origins | toJson | quote }}
             {{- if false }}

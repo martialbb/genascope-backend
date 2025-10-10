@@ -400,3 +400,100 @@ class AppointmentService(BaseService):
     def _generate_confirmation_code(self, length: int = 6) -> str:
         """Generate a random confirmation code"""
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+    
+    def list_organization_appointments(
+        self, 
+        account_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        status_filter: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        clinician_id: Optional[str] = None,
+        patient_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List all appointments for an organization with pagination and filters
+        
+        Args:
+            account_id: The organization's account ID
+            page: Page number (1-based)
+            page_size: Number of appointments per page
+            status_filter: Filter by appointment status
+            date_from: Filter appointments from this date
+            date_to: Filter appointments until this date
+            clinician_id: Filter by specific clinician
+            patient_id: Filter by specific patient
+            
+        Returns:
+            Dict with appointments, pagination info, and metadata
+        """
+        try:
+            # Get appointments with filters
+            appointments_data = self.repository.list_organization_appointments(
+                account_id=account_id,
+                page=page,
+                page_size=page_size,
+                status_filter=status_filter,
+                date_from=date_from,
+                date_to=date_to,
+                clinician_id=clinician_id,
+                patient_id=patient_id
+            )
+            
+            appointments = appointments_data['appointments']
+            total_count = appointments_data['total_count']
+            
+            # Calculate pagination metadata
+            total_pages = (total_count + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_previous = page > 1
+            
+            # Transform appointments to include patient and clinician names
+            appointment_responses = []
+            for appointment in appointments:
+                # Get patient name
+                patient_name = "Unknown Patient"
+                patient_email = None
+                if appointment.patient:
+                    patient_name = f"{appointment.patient.first_name} {appointment.patient.last_name}".strip()
+                    patient_email = appointment.patient.email
+                
+                # Get clinician name
+                clinician_name = "Unknown Clinician"
+                if appointment.clinician_id:
+                    try:
+                        clinician_name = self.user_service.get_clinician_name(appointment.clinician_id)
+                    except:
+                        pass  # Keep default name if lookup fails
+                
+                appointment_response = {
+                    "id": appointment.id,
+                    "clinician_id": appointment.clinician_id,
+                    "clinician_name": clinician_name,
+                    "patient_id": appointment.patient_id,
+                    "patient_name": patient_name,
+                    "patient_email": patient_email,
+                    "date": appointment.date_time.date(),
+                    "time": appointment.date_time.time(),
+                    "appointment_type": appointment.appointment_type,
+                    "status": appointment.status,
+                    "notes": appointment.notes,
+                    "confirmation_code": appointment.confirmation_code,
+                    "created_at": appointment.created_at,
+                    "updated_at": appointment.updated_at
+                }
+                appointment_responses.append(appointment_response)
+            
+            return {
+                "appointments": appointment_responses,
+                "total_count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_previous": has_previous
+            }
+            
+        except Exception as e:
+            self.handle_exception(e, error_prefix="Failed to list organization appointments")

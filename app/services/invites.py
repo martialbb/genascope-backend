@@ -63,11 +63,12 @@ class InviteService(BaseService):
         active_invite = next((i for i in active_invites if i.status == "pending" and i.expires_at > datetime.utcnow()), None)
         
         if active_invite:
-            # If it's from the same clinician, return the existing invite
-            if active_invite.clinician_id == invite_data["clinician_id"]:
+            # If it's from the same clinician AND has the same strategy, return the existing invite
+            if (active_invite.clinician_id == invite_data["clinician_id"] and 
+                active_invite.chat_strategy_id == invite_data.get("chat_strategy_id")):
                 return active_invite
             
-            # Otherwise, revoke the old one
+            # Otherwise, revoke the old one (different clinician or different strategy)
             self.invite_repository.revoke_invite(active_invite.id)
         
         # Create a new invite
@@ -78,7 +79,7 @@ class InviteService(BaseService):
         # Filter out fields that don't belong to the PatientInvite model
         valid_invite_fields = {
             "patient_id", "email", "invite_token", "clinician_id", "status", 
-            "custom_message", "session_metadata", "expires_at", "accepted_at", "user_id"
+            "custom_message", "session_metadata", "expires_at", "accepted_at", "user_id", "chat_strategy_id"
         }
         
         filtered_invite_data = {k: v for k, v in invite_data.items() if k in valid_invite_fields}
@@ -326,13 +327,13 @@ class InviteService(BaseService):
         
         Args:
             invite: The invitation object
-            base_url: Optional base URL, defaults to FRONTEND_URL from settings
+            base_url: Optional base URL, defaults to frontend_url from settings
             
         Returns:
             str: The complete invitation URL
         """
         # Use the provided base_url or the frontend URL from settings
-        base = base_url if base_url else settings.FRONTEND_URL
+        base = base_url if base_url else settings.frontend_url
         base = base.rstrip("/")  # Remove trailing slash if present
         
         return f"{base}/invite/{invite.invite_token}"

@@ -422,9 +422,9 @@ async def simplified_patient_access(
         
         patient = invite.patient
         
-        # Verify patient information matches
-        if (patient.first_name.lower() != access_data.first_name.lower() or
-            patient.last_name.lower() != access_data.last_name.lower()):
+        # Verify patient information matches (trim whitespace for comparison)
+        if (patient.first_name.strip().lower() != access_data.first_name.strip().lower() or
+            patient.last_name.strip().lower() != access_data.last_name.strip().lower()):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Patient information does not match"

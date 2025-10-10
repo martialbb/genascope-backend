@@ -3,7 +3,7 @@
 
 image:
   repository: "ghcr.io/martialbb/genascope-backend"
-  tag: "arm64-latest"  # Use ARM64 specific tag
+  tag: "dev-arm64"  # Use the ARM64-specific dev image
   pullPolicy: IfNotPresent
 
 # Copy the working sealed secrets configuration
@@ -14,7 +14,6 @@ sealedSecrets:
 
 app:
   environment: "development"
-  frontendUrl: "http://localhost:3000"
   
   database:
     host: "pgvector-pgvector-chart-external"
@@ -38,6 +37,7 @@ app:
   cors:
     origins:
       - "http://localhost:3000"
+      - "https://chat-dev.genascope.com"
       - "https://genascope.dev"
 
 imagePullSecrets:

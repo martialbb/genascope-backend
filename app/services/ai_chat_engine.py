@@ -30,14 +30,11 @@ class ChatEngineService:
         self.ai_chat_repo = AIChatRepository(db)
         self.settings = get_ai_chat_settings()
         
-        # Initialize related services (disabled for now - can be re-enabled when implemented)
-        # These services will be implemented in future iterations:
-        # - RAG Service: For knowledge retrieval and augmented responses
-        # - Entity Extraction: For extracting structured data from conversations  
-        # - Assessment Service: For evaluating patient criteria and outcomes
-        self._rag_service = None
-        self._extraction_service = None
-        self._assessment_service = None
+        # Initialize related services
+        from app.services.rag_service import RAGService
+        self._rag_service = RAGService(db)
+        self._extraction_service = None  # Future implementation
+        self._assessment_service = None  # Future implementation
     
     # =================== CHAT SESSION MANAGEMENT ===================
     
@@ -309,7 +306,10 @@ class ChatEngineService:
         # Generate strategy-specific proactive messages
         strategy_name = strategy.name.lower()
         
-        if 'gastroenterology' in strategy_name or 'gastro' in strategy_name:
+        # NCCN Breast Cancer Screening - RAG-powered questions
+        if 'nccn' in strategy_name and 'breast' in strategy_name:
+            return self._generate_nccn_breast_questions(strategy)
+        elif 'gastroenterology' in strategy_name or 'gastro' in strategy_name:
             return ("Hello! I'm here to help assess your digestive health. I'd like to ask you a few questions "
                    "about any symptoms you might be experiencing. Let's start with: Have you been experiencing "
                    "any abdominal pain, changes in bowel habits, or digestive discomfort recently?")
@@ -330,6 +330,37 @@ class ChatEngineService:
             return (f"Hello! I'm here to help with your {strategy.name.lower()} assessment. I'll be asking "
                    f"you some questions to better understand your health status. Shall we get started with "
                    f"your current symptoms or concerns?")
+                   
+    def _generate_nccn_breast_questions(self, strategy: ChatStrategy) -> str:
+        """Generate NCCN breast cancer screening questions using RAG.
+        
+        Args:
+            strategy: ChatStrategy object with NCCN knowledge sources
+            
+        Returns:
+            Targeted question based on NCCN guidelines
+        """
+        try:
+            # Get NCCN criteria from knowledge sources using RAG
+            nccn_context = self._get_rag_context("NCCN breast cancer genetic testing criteria family history", strategy.id)
+            
+            if nccn_context:
+                # Use RAG context to generate targeted question
+                return ("Hello! I'm here to help determine if you might benefit from genetic testing for breast cancer "
+                       "based on NCCN guidelines. I'll ask you some questions about your personal and family medical history. "
+                       "Let's start with: Do you have any personal history of breast cancer, ovarian cancer, or other cancers? "
+                       "If yes, please tell me about the type and age at diagnosis.")
+            else:
+                # Fallback if RAG context not available
+                return ("Hello! I'm here to help assess your risk for breast cancer and determine if genetic testing "
+                       "might be recommended based on NCCN guidelines. I'll ask about your personal and family history. "
+                       "First question: Do you have any personal history of breast or ovarian cancer?")
+                       
+        except Exception as e:
+            logger.error(f"Error generating NCCN questions: {e}")
+            return ("Hello! I'm here to help assess your breast cancer risk and genetic testing eligibility "
+                   "according to NCCN guidelines. Let's start with your personal history: Have you ever been "
+                   "diagnosed with breast cancer, ovarian cancer, or any other cancers?")
     
     async def _generate_ai_response(self, session: AIChatSession, user_message: str, context: str = "") -> Dict[str, Any]:
         """Generate AI response using OpenAI API and configured strategy.
@@ -348,31 +379,44 @@ class ChatEngineService:
         # Get strategy for response configuration
         strategy = self.ai_chat_repo.get_strategy_by_id(session.strategy_id)
         
+        # For NCCN strategies, get relevant context using RAG
+        if 'nccn' in strategy.name.lower():
+            # Get relevant NCCN criteria based on user response
+            rag_context = self._get_rag_context(user_message, strategy.id)
+            if rag_context:
+                context = f"{context}\n\nRelevant NCCN Guidelines:\n{rag_context}" if context else f"Relevant NCCN Guidelines:\n{rag_context}"
+        
         try:
             # Use OpenAI API for response generation
             from openai import AsyncOpenAI
-            from app.core.ai_chat_config import get_ai_chat_config
+            from app.core.ai_chat_config import get_ai_config
             
-            config = get_ai_chat_config()
-            client = AsyncOpenAI(api_key=config.ai.openai_api_key)
+            config = get_ai_config()
+            client = AsyncOpenAI(api_key=config.openai_api_key)
             
-            # Build conversation history
+            # Build conversation history with enhanced context
             messages = self._build_conversation_history(session, user_message, context, strategy)
             
             # Make OpenAI API call
             response = await client.chat.completions.create(
-                model=config.ai.openai_model,
+                model=config.openai_model,
                 messages=messages,
-                max_tokens=config.ai.openai_max_tokens,
-                temperature=config.ai.openai_temperature
+                max_tokens=config.openai_max_tokens,
+                temperature=config.openai_temperature
             )
             
             response_content = response.choices[0].message.content
             response_time = int((time.time() - start_time) * 1000)
             
+            # For NCCN strategies, analyze if criteria are met
+            assessment_result = None
+            if 'nccn' in strategy.name.lower():
+                assessment_result = self._assess_nccn_criteria(session, user_message, response_content)
+            
             return {
                 "content": response_content,
                 "confidence": 0.95,
+                "assessment": assessment_result,
                 "metadata": {
                     "response_type": "ai_generated",
                     "strategy_id": strategy.id,
@@ -380,8 +424,9 @@ class ChatEngineService:
                     "message_count": len(session.messages) + 1,
                     "has_context": bool(context),
                     "response_time_ms": response_time,
-                    "model_used": config.ai.openai_model,
-                    "tokens_used": response.usage.total_tokens if response.usage else None
+                    "model_used": config.openai_model,
+                    "tokens_used": response.usage.total_tokens if response.usage else None,
+                    "rag_enhanced": 'nccn' in strategy.name.lower()
                 }
             }
             
@@ -514,7 +559,35 @@ class ChatEngineService:
         Returns:
             System prompt string
         """
-        base_prompt = f"""You are a helpful medical AI assistant specializing in {strategy.name}. 
+        # NCCN-specific system prompt
+        if 'nccn' in strategy.name.lower() and 'breast' in strategy.name.lower():
+            prompt = f"""You are a medical AI assistant specializing in NCCN breast cancer genetic testing risk assessment. Your role is to systematically gather information to determine if a patient meets NCCN criteria for genetic testing.
+
+Key NCCN Criteria for Genetic Testing Include:
+- Personal history: Breast cancer ≤age 45, triple-negative breast cancer, ovarian cancer
+- Family history: ≥2 breast cancers, ≥1 ovarian cancer, male breast cancer
+- Specific populations: Ashkenazi Jewish heritage with cancer history
+
+Your approach:
+1. Ask targeted questions about personal cancer history (type, age at diagnosis)
+2. Systematically assess family history (maternal and paternal sides)
+3. Inquire about specific high-risk features (triple-negative, male breast cancer)
+4. Consider ethnic background when relevant
+5. Provide clear assessment of whether criteria are met
+
+Guidelines:
+- Ask ONE specific question at a time
+- Be systematic and thorough
+- Use the provided NCCN context to inform your questions
+- At the end, clearly state whether genetic testing is recommended per NCCN guidelines
+- Always recommend consultation with a genetic counselor or healthcare provider
+
+{f"Relevant NCCN Guidelines Context: {context}" if context else ""}
+
+Remember: You are gathering information to make an evidence-based recommendation according to NCCN guidelines."""
+        else:
+            # General system prompt for other strategies
+            prompt = f"""You are a helpful medical AI assistant specializing in {strategy.name}. 
 You provide accurate, evidence-based medical guidance while emphasizing that patients should consult healthcare providers for diagnosis and treatment.
 
 Your role is to:
@@ -527,16 +600,11 @@ Guidelines:
 - Be empathetic and professional
 - Ask one question at a time to gather information systematically
 - Provide specific, actionable guidance when appropriate
-- Reference medical guidelines when relevant
-- Always recommend consulting healthcare providers for diagnosis and treatment"""
+- Base recommendations on established medical guidelines
 
-        if context:
-            base_prompt += f"\n\nRelevant medical guidelines and information:\n{context[:1000]}..."
+{f"Additional Context: {context}" if context else ""}"""
         
-        if strategy.description:
-            base_prompt += f"\n\nStrategy focus: {strategy.description}"
-            
-            return base_prompt
+        return prompt
     
     async def _get_knowledge_context(self, session: AIChatSession, user_message: str) -> str:
         """Retrieve relevant context from knowledge sources using RAG.
@@ -573,6 +641,202 @@ Guidelines:
                     ]
                     
                     relevant_score = sum(1 for keyword in relevant_keywords if keyword in message_lower)
+                    
+                    if relevant_score > 0:
+                        # Extract relevant sections (simplified)
+                        sentences = knowledge_source.content.split('.')
+                        relevant_sentences = []
+                        
+                        for sentence in sentences[:50]:  # Limit to first 50 sentences
+                            if any(keyword in sentence.lower() for keyword in relevant_keywords):
+                                relevant_sentences.append(sentence.strip())
+                        
+                        if relevant_sentences:
+                            context_parts.append('\n'.join(relevant_sentences[:10]))  # Top 10 relevant sentences
+            
+            return '\n\n'.join(context_parts) if context_parts else ""
+        
+        except Exception as e:
+            logger.error(f"Error retrieving RAG context: {e}")
+            return ""
+    
+    def _assess_nccn_criteria(self, session: AIChatSession, user_message: str, ai_response: str) -> Optional[Dict[str, Any]]:
+        """Assess if patient meets NCCN criteria for genetic testing.
+        
+        Args:
+            session: Current chat session
+            user_message: Patient's latest response
+            ai_response: AI's response content
+            
+        Returns:
+            Assessment result dictionary or None
+        """
+        try:
+            # Analyze conversation history for NCCN criteria
+            all_messages = session.messages + [type('obj', (object,), {'content': user_message, 'role': 'user'})()]
+            
+            # Extract key information from conversation
+            personal_history = self._extract_personal_history(all_messages)
+            family_history = self._extract_family_history(all_messages)
+            age_info = self._extract_age_information(all_messages)
+            
+            # Evaluate against NCCN criteria
+            meets_criteria = False
+            criteria_met = []
+            
+            # Personal history criteria
+            if personal_history.get('breast_cancer'):
+                if personal_history.get('breast_cancer_age', 999) <= 45:
+                    meets_criteria = True
+                    criteria_met.append("Breast cancer diagnosed at age ≤45")
+                elif personal_history.get('triple_negative'):
+                    meets_criteria = True
+                    criteria_met.append("Triple-negative breast cancer")
+            
+            if personal_history.get('ovarian_cancer'):
+                meets_criteria = True
+                criteria_met.append("Personal history of ovarian cancer")
+            
+            # Family history criteria
+            if family_history.get('breast_cancer_count', 0) >= 2:
+                meets_criteria = True
+                criteria_met.append("≥2 breast cancer cases in family")
+            
+            if family_history.get('ovarian_cancer_count', 0) >= 1:
+                meets_criteria = True
+                criteria_met.append("≥1 ovarian cancer case in family")
+            
+            if family_history.get('male_breast_cancer'):
+                meets_criteria = True
+                criteria_met.append("Male breast cancer in family")
+            
+            # Ashkenazi Jewish heritage (if mentioned)
+            if any('ashkenazi' in msg.content.lower() or 'jewish' in msg.content.lower() 
+                   for msg in all_messages if hasattr(msg, 'content')):
+                if personal_history.get('breast_cancer') or family_history.get('breast_cancer_count', 0) >= 1:
+                    meets_criteria = True
+                    criteria_met.append("Ashkenazi Jewish heritage with cancer history")
+            
+            return {
+                "meets_nccn_criteria": meets_criteria,
+                "criteria_met": criteria_met,
+                "recommendation": "Genetic testing recommended" if meets_criteria else "Continue risk assessment",
+                "confidence": 0.8 if meets_criteria else 0.6,
+                "extracted_data": {
+                    "personal_history": personal_history,
+                    "family_history": family_history,
+                    "age_info": age_info
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error assessing NCCN criteria: {e}")
+            return None
+    
+    def _extract_personal_history(self, messages: List) -> Dict[str, Any]:
+        """Extract personal medical history from conversation."""
+        history = {}
+        for msg in messages:
+            if not hasattr(msg, 'content') or msg.role != 'user':
+                continue
+            content = msg.content.lower()
+            
+            if 'breast cancer' in content:
+                history['breast_cancer'] = True
+                # Try to extract age
+                import re
+                age_match = re.search(r'age (\d+)|(\d+) years old|diagnosed at (\d+)', content)
+                if age_match:
+                    age = int(next(g for g in age_match.groups() if g))
+                    history['breast_cancer_age'] = age
+            
+            if 'ovarian cancer' in content:
+                history['ovarian_cancer'] = True
+            
+            if 'triple negative' in content or 'triple-negative' in content:
+                history['triple_negative'] = True
+        
+        return history
+    
+    def _extract_family_history(self, messages: List) -> Dict[str, Any]:
+        """Extract family medical history from conversation."""
+        history = {'breast_cancer_count': 0, 'ovarian_cancer_count': 0}
+        
+        for msg in messages:
+            if not hasattr(msg, 'content') or msg.role != 'user':
+                continue
+            content = msg.content.lower()
+            
+            # Count family members with breast cancer
+            if 'mother' in content and 'breast cancer' in content:
+                history['breast_cancer_count'] += 1
+            if 'sister' in content and 'breast cancer' in content:
+                history['breast_cancer_count'] += 1
+            if 'grandmother' in content and 'breast cancer' in content:
+                history['breast_cancer_count'] += 1
+            if 'aunt' in content and 'breast cancer' in content:
+                history['breast_cancer_count'] += 1
+            
+            # Count family members with ovarian cancer
+            if any(relative in content for relative in ['mother', 'sister', 'grandmother', 'aunt']) and 'ovarian cancer' in content:
+                history['ovarian_cancer_count'] += 1
+            
+            # Male breast cancer
+            if ('father' in content or 'brother' in content or 'male' in content) and 'breast cancer' in content:
+                history['male_breast_cancer'] = True
+        
+        return history
+    
+    def _extract_age_information(self, messages: List) -> Dict[str, Any]:
+        """Extract age-related information from conversation."""
+        age_info = {}
+        for msg in messages:
+            if not hasattr(msg, 'content') or msg.role != 'user':
+                continue
+            content = msg.content.lower()
+            
+            import re
+            # Current age
+            age_match = re.search(r'i am (\d+)|(\d+) years old|age (\d+)', content)
+            if age_match:
+                age = int(next(g for g in age_match.groups() if g))
+                age_info['current_age'] = age
+        
+        return age_info
+    
+    def _get_rag_context(self, query: str, strategy_id: str) -> str:
+        """Get relevant context from knowledge sources using RAG.
+        
+        Args:
+            query: Search query for relevant content
+            strategy_id: ID of the strategy to get knowledge sources from
+            
+        Returns:
+            Relevant context string from knowledge sources
+        """
+        try:
+            # Get strategy with knowledge sources
+            strategy = self.ai_chat_repo.get_strategy_by_id(strategy_id)
+            
+            if not strategy or not strategy.knowledge_sources:
+                return ""
+            
+            context_parts = []
+            
+            for knowledge_source in strategy.knowledge_sources:
+                if knowledge_source.source_type == "file" and knowledge_source.content:
+                    # Simple keyword-based retrieval for now
+                    content = knowledge_source.content.lower()
+                    query_lower = query.lower()
+                    
+                    # Check for relevant keywords
+                    relevant_keywords = [
+                        "brca", "breast cancer", "screening", "mammogram", "mri",
+                        "genetic", "hereditary", "family history", "risk assessment",
+                        "guidelines", "nccn", "recommendation"
+                    ]
+                    
+                    relevant_score = sum(1 for keyword in relevant_keywords if keyword in query_lower)
                     
                     if relevant_score > 0:
                         # Extract relevant sections (simplified)
