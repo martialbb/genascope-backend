@@ -10,22 +10,8 @@ on:
       - 'pyproject.toml'
       - 'docker/**'
       - 'alembic/**'
-      - '.github/workflows/**.ym    - name: Determine build platforms
-      id: platforms
-      run: |
-        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" = "push" ]; then
-          # For main branch, build AMD64 only for faster CI/CD
-          # ARM64 builds can be done locally or in a separate manual workflow
-          echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          echo "cache_mode=max" >> $GITHUB_OUTPUT
-          echo "timeout=20m" >> $GITHUB_OUTPUT
-          echo "Building AMD64 for main branch (ARM64 skipped for speed)"
-        else
-          echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          echo "cache_mode=min" >> $GITHUB_OUTPUT
-          echo "timeout=20m" >> $GITHUB_OUTPUT
-          echo "Building AMD64 only for development"
-        fist:
+      - '.github/workflows/**.yml'
+  pull_request:
     branches: [ main ]
     paths:
       - 'app/**'
@@ -274,11 +260,12 @@ jobs:
       id: platforms
       run: |
         if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" = "push" ]; then
-          # For main branch, build both architectures
-          echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          # For main branch, build AMD64 only for faster CI/CD
+          # ARM64 builds can be done locally or in a separate manual workflow
+          echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
           echo "cache_mode=max" >> $GITHUB_OUTPUT
-          echo "timeout=45m" >> $GITHUB_OUTPUT
-          echo "Building both AMD64 and ARM64 for main branch"
+          echo "timeout=20m" >> $GITHUB_OUTPUT
+          echo "Building AMD64 for main branch (ARM64 skipped for speed)"
         else
           echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
           echo "cache_mode=min" >> $GITHUB_OUTPUT
