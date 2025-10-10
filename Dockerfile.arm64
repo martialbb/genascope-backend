@@ -31,11 +31,9 @@ RUN pip install --upgrade pip wheel setuptools
 COPY requirements.dev.txt ./requirements.txt
 
 # Install Python dependencies with ARM64 optimizations
+# Removed --only-binary=all fallback pattern to avoid double builds
+# Using --prefer-binary is sufficient for ARM64
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
-    --prefer-binary \
-    --only-binary=all \
-    -r requirements.txt || \
     pip install --no-cache-dir \
     --prefer-binary \
     -r requirements.txt
