@@ -5,7 +5,7 @@ on:
     branches: [ main, develop ]
     paths:
       - 'app/**'
-      - 'Dockerfile'
+      - 'Dockerfile*'
       - 'requirements*.txt'
       - 'pyproject.toml'
       - 'docker/**'
@@ -15,7 +15,7 @@ on:
     branches: [ main ]
     paths:
       - 'app/**'
-      - 'Dockerfile'
+      - 'Dockerfile*'
       - 'requirements*.txt'
       - 'pyproject.toml'
       - 'docker/**'
