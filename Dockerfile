@@ -36,19 +36,12 @@ RUN pip install --upgrade pip wheel setuptools
 # Copy only requirements file first (for better caching)
 COPY requirements.txt ./
 
-# Install Python dependencies with platform-specific optimizations
+# Install Python dependencies with optimizations
+# Single-pass installation is faster and more reliable than multi-step approach
 RUN --mount=type=cache,target=/root/.cache/pip \
-    # Clean any existing cache first to save space
-    pip cache purge || true && \
-    # Install with aggressive space optimization
     pip install --no-cache-dir \
     --prefer-binary \
-    --find-links https://download.pytorch.org/whl/cpu/torch_stable.html \
-    --no-deps \
     -r requirements.txt && \
-    # Install dependencies separately to handle conflicts
-    pip install --no-cache-dir --prefer-binary \
-    typing-extensions pydantic-core && \
     # Clean up any temporary files
     find /opt/venv -name "*.pyc" -delete && \
     find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + || true
