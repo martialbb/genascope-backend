@@ -194,16 +194,18 @@ class ChatEngineService:
         return self.ai_chat_repo.get_session_messages(session_id, limit=limit)
     
     def get_active_sessions(
-        self, 
+        self,
         patient_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         limit: int = 10
     ) -> List[AIChatSession]:
         """Get active chat sessions.
-        
+
         Args:
             patient_id: Optional patient ID to filter by
+            user_id: Optional user ID to filter by (currently not used in repository)
             limit: Maximum number of sessions to return
-            
+
         Returns:
             List of active AIChatSession objects
         """
