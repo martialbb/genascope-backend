@@ -172,11 +172,25 @@ class ChatEngineService:
         }
         
         assistant_msg = self.ai_chat_repo.create_message(assistant_msg_data)
-        
-        # Future enhancements (disabled for now):
-        # - Perform assessment if enough data is collected
-        # - Check if conversation should end based on strategy rules
-        
+
+        # Store assessment results if available
+        if ai_response.get("assessment"):
+            assessment = ai_response["assessment"]
+
+            # Update session with assessment results
+            update_data = {
+                "assessment_results": assessment,
+                "last_activity": datetime.utcnow()
+            }
+
+            # If NCCN criteria is met, mark session as completed
+            if assessment.get("meets_nccn_criteria"):
+                update_data["status"] = SessionStatus.completed.value
+                update_data["completed_at"] = datetime.utcnow()
+                logger.info(f"Session {session_id} completed - NCCN criteria met: {assessment.get('criteria_met')}")
+
+            self.ai_chat_repo.update_session(session_id, update_data)
+
         return assistant_msg
     
     # =================== SESSION RETRIEVAL METHODS ===================
@@ -581,7 +595,8 @@ Guidelines:
 - Ask ONE specific question at a time
 - Be systematic and thorough
 - Use the provided NCCN context to inform your questions
-- At the end, clearly state whether genetic testing is recommended per NCCN guidelines
+- When sufficient criteria is met, clearly state: "Based on your responses, you MEET the NCCN criteria for genetic testing" and explain which criteria were met
+- When criteria is met, inform the patient that the assessment is complete and recommend next steps (genetic counselor consultation)
 - Always recommend consultation with a genetic counselor or healthcare provider
 
 {f"Relevant NCCN Guidelines Context: {context}" if context else ""}
