@@ -11,3 +11,4 @@ from app.models.appointment import Appointment, Availability, RecurringAvailabil
 # Import these last to avoid circular imports
 from app.models.patient import Patient, PatientStatus
 from app.models.invite import PatientInvite
+from app.models.risk_assessment import RiskAssessment
