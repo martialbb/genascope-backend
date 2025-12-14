@@ -280,9 +280,25 @@ class ChatEngineService:
     # These methods will be implemented when supporting services are ready
     
     async def get_session_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get assessment results for a session (placeholder)."""
-        # TODO: Implement when assessment service is ready
-        return {"status": "not_implemented", "message": "Assessment service not yet implemented"}
+        """Get assessment results for a session.
+
+        Args:
+            session_id: ID of the session to get assessment for
+
+        Returns:
+            Assessment results dictionary or None if no assessment available
+        """
+        try:
+            session = self.ai_chat_repo.get_session_by_id(session_id)
+            if not session:
+                return None
+
+            # Return the stored assessment results
+            return session.assessment_results if session.assessment_results else None
+
+        except Exception as e:
+            logger.error(f"Error retrieving session assessment: {e}")
+            return None
     
     async def get_session_recommendations(self, session_id: str) -> List[Dict[str, Any]]:
         """Get recommendations for a session (placeholder).""" 
