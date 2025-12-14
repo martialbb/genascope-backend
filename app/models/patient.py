@@ -48,6 +48,7 @@ class Patient(Base):
     chat_sessions = relationship("AIChatSession", back_populates="patient", cascade="all, delete-orphan")  # AI chat system
     # Using string lookup for related class to avoid circular imports
     invites = relationship("PatientInvite", back_populates="patient", cascade="all, delete-orphan")
+    risk_assessments = relationship("RiskAssessment", back_populates="patient", cascade="all, delete-orphan")
     
     @property
     def full_name(self):

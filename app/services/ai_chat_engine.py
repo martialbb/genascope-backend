@@ -29,10 +29,12 @@ class ChatEngineService:
         self.db = db
         self.ai_chat_repo = AIChatRepository(db)
         self.settings = get_ai_chat_settings()
-        
+
         # Initialize related services
         from app.services.rag_service import RAGService
+        from app.repositories.risk_assessment_repository import RiskAssessmentRepository
         self._rag_service = RAGService(db)
+        self._risk_assessment_repo = RiskAssessmentRepository(db)
         self._extraction_service = None  # Future implementation
         self._assessment_service = None  # Future implementation
     
@@ -177,7 +179,7 @@ class ChatEngineService:
         if ai_response.get("assessment"):
             assessment = ai_response["assessment"]
 
-            # Update session with assessment results
+            # Update session with assessment results (storage location 1: ai_chat_sessions)
             update_data = {
                 "assessment_results": assessment,
                 "last_activity": datetime.utcnow()
@@ -190,6 +192,24 @@ class ChatEngineService:
                 logger.info(f"Session {session_id} completed - NCCN criteria met: {assessment.get('criteria_met')}")
 
             self.ai_chat_repo.update_session(session_id, update_data)
+
+            # Also store in risk_assessments table (storage location 2: risk_assessments)
+            try:
+                from app.models.risk_assessment import RiskAssessment
+
+                risk_assessment = RiskAssessment.from_nccn_assessment(
+                    patient_id=session.patient_id,
+                    assessment_data=assessment,
+                    session_id=session_id,
+                    assessed_by=None  # AI-generated assessment
+                )
+
+                self._risk_assessment_repo.create(risk_assessment)
+                logger.info(f"Risk assessment created for patient {session.patient_id} from session {session_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to create risk assessment record: {e}")
+                # Don't fail the entire operation if risk assessment creation fails
 
         return assistant_msg
     
