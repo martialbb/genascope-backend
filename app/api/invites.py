@@ -451,7 +451,8 @@ async def simplified_patient_access(
             "id": patient.id,
             "role": "patient",
             "access_type": "simplified",  # Mark this as simplified access
-            "invite_id": invite.id
+            "invite_id": invite.id,
+            "chat_strategy_id": invite.chat_strategy_id  # Include strategy for session creation
         }
         
         access_token = create_access_token(
