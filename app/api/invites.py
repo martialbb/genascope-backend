@@ -9,6 +9,7 @@ from app.services.invites import InviteService
 from app.services.users import UserService
 from app.services.patients import PatientService
 from app.models.user import UserRole
+from app.models.chat_configuration import ChatStrategy
 from app.schemas.invites import (
     PatientInviteCreate, PatientInviteResponse, BulkInviteCreate, BulkInviteResponse,
     InviteResend, InviteVerification, InviteVerificationResponse, PatientRegistration,
@@ -108,7 +109,14 @@ async def generate_invite(
         
         # Get provider name
         provider_name = provider.name
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         return PatientInviteResponse(
             invite_id=str(invite.id),
             email=invite.email,
@@ -118,6 +126,8 @@ async def generate_invite(
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
+            chat_strategy_id=invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(invite.status),
             created_at=invite.created_at,
             expires_at=invite.expires_at,

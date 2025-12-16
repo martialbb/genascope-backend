@@ -42,6 +42,8 @@ class PatientInviteResponse(PatientInviteBase):
     invite_url: str
     provider_id: str
     provider_name: str
+    chat_strategy_id: Optional[str] = None
+    chat_strategy_name: Optional[str] = None
     status: InviteStatus
     created_at: datetime
     expires_at: datetime
