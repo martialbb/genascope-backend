@@ -95,19 +95,255 @@ Patient Response → RAG Search → NCCN Context → Enhanced AI Response → Cr
 
 ## 🎉 **Mission Status: COMPLETE**
 
-✅ **Proactive questioning** based on NCCN strategy and knowledge sources  
-✅ **Patient response analysis** using RAG and NCCN guidelines  
-✅ **Automated determination** of genetic testing eligibility  
-✅ **Real-time criteria assessment** with detailed reasoning  
-✅ **Knowledge source integration** with PDF guidelines  
+✅ **Proactive questioning** based on NCCN strategy and knowledge sources
+✅ **Patient response analysis** using RAG and NCCN guidelines
+✅ **Automated determination** of genetic testing eligibility
+✅ **Real-time criteria assessment** with detailed reasoning
+✅ **Knowledge source integration** with PDF guidelines
+✅ **Assessment persistence** in database for retrieval and analytics
+✅ **Session auto-completion** when NCCN criteria is met
+✅ **Dual storage architecture** for quick access and analytics
 
-### **Deployment Note:**
-The complete RAG system is implemented and ready. For immediate testing in production, restart the pod to clear Python module cache and load the new RAG-enhanced code.
+---
 
-### **Next Steps for Enhanced Implementation:**
+## 📊 **NEW: Dual Storage Architecture**
+
+### **Storage Location 1: `ai_chat_sessions.assessment_results`**
+**Purpose**: Quick session-context access for real-time AI interactions
+
+```sql
+SELECT assessment_results FROM ai_chat_sessions
+WHERE id = 'session-id';
+```
+
+**Example Data:**
+```json
+{
+  "meets_nccn_criteria": true,
+  "criteria_met": ["Breast cancer diagnosed at age ≤45"],
+  "recommendation": "Genetic testing recommended",
+  "confidence": 0.8,
+  "extracted_data": {
+    "personal_history": {"breast_cancer": true, "breast_cancer_age": 42},
+    "family_history": {"breast_cancer_count": 0, "ovarian_cancer_count": 0},
+    "age_info": {"current_age": 42}
+  }
+}
+```
+
+### **Storage Location 2: `risk_assessments` Table**
+**Purpose**: Structured analytics, reporting, and cross-patient queries
+
+**Schema:**
+```sql
+CREATE TABLE risk_assessments (
+    id VARCHAR(36) PRIMARY KEY,
+    patient_id VARCHAR(36) REFERENCES patients(id),
+    assessment_type VARCHAR(100),        -- e.g., "NCCN_breast_cancer"
+    risk_score NUMERIC(5,2),             -- 0.00 to 100.00
+    risk_category VARCHAR(50),           -- "high", "moderate", "low"
+    details JSONB,                       -- Full assessment details + session_id
+    assessed_by VARCHAR(36),             -- User ID or NULL for AI
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+**Example Record:**
+```
+id:              fc3a215c-84a3-4882-9ec5-f4a6da7dd97a
+patient_id:      08a598de-e547-497d-bd11-2cdc12bfd159
+assessment_type: NCCN_breast_cancer
+risk_score:      80.00
+risk_category:   high
+details:         {includes session_id, criteria_met, recommendation, etc.}
+created_at:      2025-12-16 15:23:46
+```
+
+**Analytics Queries Enabled:**
+```python
+# Get all high-risk patients
+high_risk = repo.get_high_risk_patients(assessment_type="NCCN_breast_cancer")
+
+# Get patient's assessment history
+history = repo.get_by_patient(patient_id, limit=10)
+
+# Get latest assessment for a patient
+latest = repo.get_latest_by_patient(patient_id, "NCCN_breast_cancer")
+```
+
+---
+
+## 🔄 **Session Auto-Completion**
+
+When NCCN criteria is met, the system automatically:
+
+1. **Stores assessment** in both storage locations
+2. **Marks session as completed**:
+   ```python
+   update_data = {
+       "status": SessionStatus.completed.value,
+       "completed_at": datetime.utcnow(),
+       "assessment_results": assessment
+   }
+   ```
+3. **Logs completion** with criteria details
+4. **Links risk assessment** back to session via `details.session_id`
+
+**Code Location:** `app/services/ai_chat_engine.py:176-213`
+
+---
+
+## 🗃️ **New Database Models**
+
+### **RiskAssessment Model** (`app/models/risk_assessment.py`)
+
+```python
+class RiskAssessment(Base):
+    """Risk assessment record for a patient."""
+    __tablename__ = "risk_assessments"
+
+    id = Column(String(36), primary_key=True)
+    patient_id = Column(String(36), ForeignKey("patients.id"))
+    assessment_type = Column(String(100), nullable=False)
+    risk_score = Column(Numeric(5, 2), nullable=True)
+    risk_category = Column(String(50), nullable=True)
+    details = Column(JSONB, nullable=True)
+    assessed_by = Column(String(36), ForeignKey("users.id"))
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    # Relationships
+    patient = relationship("Patient", back_populates="risk_assessments")
+    assessor = relationship("User", foreign_keys=[assessed_by])
+
+    @classmethod
+    def from_nccn_assessment(cls, patient_id, assessment_data,
+                            session_id=None, assessed_by=None):
+        """Factory method to create from NCCN assessment results."""
+        # Automatically calculates:
+        # - risk_score: 80.00 (high) if meets criteria, 20.00 (low) otherwise
+        # - risk_category: "high" or "low"
+        # - Stores session_id in details.session_id for traceability
+```
+
+### **RiskAssessmentRepository** (`app/repositories/risk_assessment_repository.py`)
+
+```python
+class RiskAssessmentRepository:
+    """Repository for risk assessment database operations."""
+
+    def create(risk_assessment: RiskAssessment) -> RiskAssessment
+    def get_by_id(assessment_id: str) -> Optional[RiskAssessment]
+    def get_by_patient(patient_id: str, assessment_type: Optional[str],
+                      limit: int) -> List[RiskAssessment]
+    def get_latest_by_patient(patient_id: str,
+                             assessment_type: str) -> Optional[RiskAssessment]
+    def get_high_risk_patients(assessment_type: Optional[str],
+                              limit: int) -> List[RiskAssessment]
+    def update(assessment_id: str, update_data: Dict) -> Optional[RiskAssessment]
+    def delete(assessment_id: str) -> bool
+```
+
+---
+
+## ✅ **End-to-End Test Results (2025-12-16)**
+
+```
+======================================================================
+  🧬 NCCN AI CHAT SYSTEM - END-TO-END TEST
+======================================================================
+
+Test Patient: "I was diagnosed with breast cancer at age 42"
+
+📊 RESULTS:
+✅ NCCN Criteria Assessment - PASSED
+   → System correctly identified patient meets criteria
+   → Criteria: Breast cancer at age ≤45
+
+✅ Assessment Persistence - PASSED
+   → Assessment results stored in ai_chat_sessions.assessment_results
+   → Risk assessment created in risk_assessments table
+   → Both storage locations verified
+
+✅ Session Auto-Completion - PASSED
+   → Session marked as completed when criteria met
+   → Completion timestamp recorded
+
+✅ Dual Storage Verification - PASSED
+   → ai_chat_sessions: assessment_results populated ✓
+   → risk_assessments: record created with risk_score=80.00 ✓
+   → Session linked via details.session_id ✓
+
+======================================================================
+  🎉 ALL TESTS PASSED! SYSTEM FULLY OPERATIONAL
+======================================================================
+```
+
+---
+
+## 📈 **Use Cases Enabled**
+
+### **1. Real-time Session Access**
+```python
+# Get assessment from active session
+GET /ai-chat/sessions/{session_id}/assessment
+# Returns: assessment_results from ai_chat_sessions table
+```
+
+### **2. Analytics Dashboard**
+```python
+# Query all high-risk patients for review
+assessments = risk_assessment_repo.get_high_risk_patients(
+    assessment_type="NCCN_breast_cancer",
+    limit=100
+)
+# Returns: All patients with risk_category="high"
+```
+
+### **3. Patient Risk History**
+```python
+# View patient's assessment history over time
+history = risk_assessment_repo.get_by_patient(
+    patient_id="...",
+    assessment_type="NCCN_breast_cancer",
+    limit=10
+)
+# Returns: All assessments for patient, ordered by date
+```
+
+### **4. Audit Trail**
+```python
+# Trace assessment back to conversation
+assessment = risk_assessment_repo.get_by_id("...")
+session_id = assessment.details["session_id"]
+# Can retrieve full conversation that led to assessment
+```
+
+---
+
+## 🚀 **Deployment Status**
+
+**Production Deployed:** 2025-12-16
+**Image Digest:** `sha256:6d9b8fa6d876742d95b6a1de7c6af95ca93fb2b4be198c82fed789aaeb429012`
+**Status:** All tests passing, dual storage verified
+**Commits:** aed8a2c (SQLAlchemy model registration fix)
+
+### **Architecture Benefits:**
+- ✅ Zero data loss - graceful error handling on risk_assessment creation
+- ✅ Session context preserved even if analytics storage fails
+- ✅ Backward compatible - existing code continues to work
+- ✅ Scalable - analytics queries don't impact session performance
+
+---
+
+## 🎯 **Next Steps for Enhanced Implementation**
+
 1. **Vector Embeddings**: Implement pgvector-based semantic search for more sophisticated knowledge retrieval
 2. **Document Chunking**: Process NCCN PDFs into searchable chunks with embeddings
 3. **Advanced Criteria Logic**: Add more nuanced NCCN criteria combinations
 4. **Confidence Scoring**: Implement uncertainty handling for edge cases
+5. **Analytics Dashboard**: Build UI for querying and visualizing risk assessments
+6. **Trend Analysis**: Track assessment patterns over time and across populations
 
-**The foundation is complete and fully functional for NCCN genetic testing criteria assessment using RAG!** 🧬
+**The complete system is production-ready with full assessment persistence, session auto-completion, and dual storage architecture!** 🧬
