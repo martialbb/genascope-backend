@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2025-12-18
+
+### 🔧 Fixed
+- **Patient Invite Response - Missing Chat Strategy Fields**
+  - Fixed missing `chat_strategy_id` and `chat_strategy_name` in PatientInviteResponse
+  - Added database query to retrieve chat strategy name when strategy ID exists
+  - Updated response schema to include both fields (`app/schemas/invites.py:45-46`)
+  - Implementation location: `app/api/invites.py:113-130`
+
+- **JWT Token Enhancement**
+  - Added `chat_strategy_id` to JWT token payload for simplified patient access
+  - Enables frontend to retrieve strategy without additional API calls
+  - Implementation location: `app/api/invites.py:465`
+
+- **ARM64 Docker Build Cache Issue**
+  - Fixed Docker layer caching serving stale code despite `no-cache: true` flag
+  - Added commit SHA-based image tagging (`:arm64-<sha>`) alongside `:arm64-latest`
+  - Ensures unique image for each build, preventing cache reuse
+  - Updated ARM64 build workflow to create dual tags for traceability
+
+#### Technical Details
+- **Commits**: 7938241 (invite response fix), eeb407b (JWT token fix), 812c7b5 (build cache fix)
+- **Affected Files**:
+  - `app/api/invites.py` - Query strategy and populate response
+  - `app/schemas/invites.py` - Schema field definitions
+  - `.github/workflows/build-arm64.yml` - Build tagging strategy
+- **Deployment**: 2025-12-18
+  - ARM64 build: 20330454408 (completed successfully)
+  - Image tag: `:arm64-812c7b54a692a0fa5f4f10d735882c60cdcd03e1`
+  - Image digest: `sha256:38f5f762f6aacd71234806c13274a3f5bee1f5a36f0e01b69b753b6b45ed2501`
+  - Pod: `genascope-backend-74d9d5c686-5hp8r`
+  - Status: Production-ready, code verified in running pod
+
 ## [1.5.0] - 2025-12-16
 
 ### 🎯 NCCN Risk Assessment - Dual Storage Architecture
