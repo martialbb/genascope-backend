@@ -45,7 +45,9 @@ jobs:
         context: .
         file: ./Dockerfile.arm64
         push: true
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-${{ github.sha }}
         platforms: linux/arm64
         no-cache: true
         build-args: |
@@ -56,7 +58,12 @@ jobs:
     - name: ARM64 Build Complete
       run: |
         echo "🎉 ARM64 Docker image build completed!"
-        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest"
+        echo "Images tagged:"
+        echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest"
+        echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-${{ github.sha }}"
         echo ""
         echo "This image uses lightweight dependencies optimized for ARM64."
-        echo "For Orange Pi deployment, use: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest"
+        echo "For Orange Pi deployment, use:"
+        echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest"
+        echo "Or use commit-specific tag:"
+        echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-${{ github.sha }}"
