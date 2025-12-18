@@ -47,8 +47,7 @@ jobs:
         push: true
         tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-latest
         platforms: linux/arm64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        no-cache: true
         build-args: |
           DEBIAN_FRONTEND=noninteractive
           BUILDKIT_INLINE_CACHE=1
