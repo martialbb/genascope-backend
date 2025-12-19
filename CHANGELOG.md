@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.2] - 2025-12-18
+
+### 🔧 Fixed - CRITICAL
+- **Chat Strategy ID Not Stored in Database**
+  - **Root Cause**: Database column `chat_strategy_id` was `nullable=True`, but model defined it as `nullable=False`
+  - **Impact**: 33 out of 49 invites had NULL chat_strategy_id despite frontend sending correct values
+  - **Resolution**: Applied database migration to set column to `NOT NULL`
+  - Updated 33 existing invites to use 'strategy-1' as default strategy
+  - Database now enforces chat_strategy_id requirement matching model definition
+  - Migration file: `alembic/versions/b288bcc9cc27_make_chat_strategy_id_not_null.py`
+  - Applied to production: 2025-12-18 22:35 UTC
+
+#### Technical Details
+- **Investigation Path**:
+  1. Verified API endpoint accepts `chat_strategy_id` (`app/api/invites.py:89`)
+  2. Verified service layer includes it in valid fields (`app/services/invites.py:82`)
+  3. Verified repository passes all data to model (`app/repositories/invites.py:73`)
+  4. Verified model defines field as `nullable=False` (`app/models/invite.py:18`)
+  5. **Discovered mismatch**: Database schema had `nullable=True` from original migration
+- **Original Migration**: `add_chat_strategy_to_invites.py` (Aug 1, 2025) created column with `nullable=True`
+- **Fix**: Manual SQL execution + Alembic migration for future deployments
+- **Verification**: Database schema now shows `chat_strategy_id: VARCHAR(36) (nullable=False)`
+
 ## [1.5.1] - 2025-12-18
 
 ### 🔧 Fixed
