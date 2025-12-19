@@ -224,11 +224,18 @@ async def bulk_invite(
     for invite in successful:
         # Generate an invite URL with the invite token using frontend URL
         invite_url = invite_service.generate_invite_url(invite)
-        
+
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         successful_responses.append(PatientInviteResponse(
             invite_id=str(invite.id),
             email=invite.email,
@@ -238,6 +245,8 @@ async def bulk_invite(
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
+            chat_strategy_id=invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(invite.status),
             created_at=invite.created_at,
             expires_at=invite.expires_at,
@@ -301,11 +310,18 @@ async def resend_invite(
         
         # Generate an invite URL with the invite token using frontend URL
         invite_url = invite_service.generate_invite_url(invite)
-        
+
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         return PatientInviteResponse(
             invite_id=str(invite.id),
             email=invite.email,
@@ -315,6 +331,8 @@ async def resend_invite(
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
+            chat_strategy_id=invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(invite.status),
             created_at=invite.created_at,
             expires_at=invite.expires_at,
@@ -545,11 +563,18 @@ async def get_pending_invites(
     for invite in invites:
         # Generate an invite URL with the invite token using frontend URL
         invite_url = invite_service.generate_invite_url(invite)
-        
+
         # Get provider name
         provider = user_service.get_user_by_id(invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         responses.append(PatientInviteResponse(
             invite_id=str(invite.id),
             email=invite.email,
@@ -559,6 +584,8 @@ async def get_pending_invites(
             invite_url=invite_url,
             provider_id=invite.clinician_id,
             provider_name=provider_name,
+            chat_strategy_id=invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(invite.status),
             created_at=invite.created_at,
             expires_at=invite.expires_at,
@@ -688,14 +715,21 @@ async def list_invites(
     for invite in invites:
         # Generate invite URL
         invite_url = invite_service.generate_invite_url(invite)
-        
+
         # Get provider name
         if invite.clinician_id:
             provider = user_service.get_user_by_id(invite.clinician_id)
             provider_name = provider.name if provider else "Unknown Provider"
         else:
             provider_name = "No Provider Assigned"
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         invite_responses.append(PatientInviteResponse(
             invite_id=str(invite.id),
             email=invite.email,
@@ -705,6 +739,8 @@ async def list_invites(
             invite_url=invite_url,
             provider_id=invite.clinician_id or "",  # Use empty string if None
             provider_name=provider_name,
+            chat_strategy_id=invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(invite.status),
             created_at=invite.created_at,
             expires_at=invite.expires_at,
@@ -786,11 +822,18 @@ async def get_invite_details(
     
     # Generate invite URL
     invite_url = invite_service.generate_invite_url(invite)
-    
+
     # Get provider name
     provider = user_service.get_user_by_id(invite.clinician_id)
     provider_name = provider.name if provider else "Unknown Provider"
-    
+
+    # Get chat strategy name if strategy ID exists
+    chat_strategy_name = None
+    if invite.chat_strategy_id:
+        strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+        if strategy:
+            chat_strategy_name = strategy.name
+
     return PatientInviteResponse(
         invite_id=str(invite.id),
         email=invite.email,
@@ -800,6 +843,8 @@ async def get_invite_details(
         invite_url=invite_url,
         provider_id=invite.clinician_id,
         provider_name=provider_name,
+        chat_strategy_id=invite.chat_strategy_id,
+        chat_strategy_name=chat_strategy_name,
         status=InviteStatus(invite.status),
         created_at=invite.created_at,
         expires_at=invite.expires_at,
@@ -856,11 +901,18 @@ async def resend_specific_invite(
         
         # Generate invite URL
         invite_url = invite_service.generate_invite_url(updated_invite)
-        
+
         # Get provider name
         provider = user_service.get_user_by_id(updated_invite.clinician_id)
         provider_name = provider.name if provider else "Unknown Provider"
-        
+
+        # Get chat strategy name if strategy ID exists
+        chat_strategy_name = None
+        if updated_invite.chat_strategy_id:
+            strategy = db.query(ChatStrategy).filter(ChatStrategy.id == updated_invite.chat_strategy_id).first()
+            if strategy:
+                chat_strategy_name = strategy.name
+
         return PatientInviteResponse(
             invite_id=str(updated_invite.id),
             email=updated_invite.email,
@@ -870,6 +922,8 @@ async def resend_specific_invite(
             invite_url=invite_url,
             provider_id=updated_invite.clinician_id,
             provider_name=provider_name,
+            chat_strategy_id=updated_invite.chat_strategy_id,
+            chat_strategy_name=chat_strategy_name,
             status=InviteStatus(updated_invite.status),
             created_at=updated_invite.created_at,
             expires_at=updated_invite.expires_at,
@@ -959,11 +1013,18 @@ async def get_patient_invites(
         for invite in invites:
             # Generate invite URL
             invite_url = invite_service.generate_invite_url(invite)
-            
+
             # Get provider name
             provider = user_service.get_user_by_id(invite.clinician_id)
             provider_name = provider.name if provider else "Unknown Provider"
-            
+
+            # Get chat strategy name if strategy ID exists
+            chat_strategy_name = None
+            if invite.chat_strategy_id:
+                strategy = db.query(ChatStrategy).filter(ChatStrategy.id == invite.chat_strategy_id).first()
+                if strategy:
+                    chat_strategy_name = strategy.name
+
             invite_responses.append(PatientInviteResponse(
                 invite_id=str(invite.id),
                 email=invite.email,
@@ -973,6 +1034,8 @@ async def get_patient_invites(
                 invite_url=invite_url,
                 provider_id=invite.clinician_id,
                 provider_name=provider_name,
+                chat_strategy_id=invite.chat_strategy_id,
+                chat_strategy_name=chat_strategy_name,
                 status=InviteStatus(invite.status),
                 created_at=invite.created_at,
                 expires_at=invite.expires_at,
