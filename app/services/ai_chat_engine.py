@@ -812,32 +812,71 @@ Guidelines:
         return history
     
     def _extract_family_history(self, messages: List) -> Dict[str, Any]:
-        """Extract family medical history from conversation."""
+        """Extract family medical history from conversation with context awareness."""
         history = {'breast_cancer_count': 0, 'ovarian_cancer_count': 0}
-        
-        for msg in messages:
-            if not hasattr(msg, 'content') or msg.role != 'user':
+
+        # Track if we're discussing family cancer history based on context
+        discussing_family_cancer = False
+        last_cancer_type = None
+
+        for i, msg in enumerate(messages):
+            if not hasattr(msg, 'content'):
                 continue
+
             content = msg.content.lower()
-            
-            # Count family members with breast cancer
-            if 'mother' in content and 'breast cancer' in content:
-                history['breast_cancer_count'] += 1
-            if 'sister' in content and 'breast cancer' in content:
-                history['breast_cancer_count'] += 1
-            if 'grandmother' in content and 'breast cancer' in content:
-                history['breast_cancer_count'] += 1
-            if 'aunt' in content and 'breast cancer' in content:
-                history['breast_cancer_count'] += 1
-            
-            # Count family members with ovarian cancer
-            if any(relative in content for relative in ['mother', 'sister', 'grandmother', 'aunt']) and 'ovarian cancer' in content:
-                history['ovarian_cancer_count'] += 1
-            
-            # Male breast cancer
-            if ('father' in content or 'brother' in content or 'male' in content) and 'breast cancer' in content:
-                history['male_breast_cancer'] = True
-        
+
+            # Check if assistant is asking about family cancer history
+            if msg.role == 'assistant':
+                if 'family' in content and ('cancer' in content or 'breast' in content or 'ovarian' in content):
+                    discussing_family_cancer = True
+                    if 'breast cancer' in content:
+                        last_cancer_type = 'breast'
+                    elif 'ovarian cancer' in content:
+                        last_cancer_type = 'ovarian'
+                continue
+
+            # Process user responses
+            if msg.role == 'user':
+                # Direct mentions with cancer type
+                if 'mother' in content and 'breast cancer' in content:
+                    history['breast_cancer_count'] += 1
+                if 'sister' in content and 'breast cancer' in content:
+                    history['breast_cancer_count'] += 1
+                if 'grandmother' in content and 'breast cancer' in content:
+                    history['breast_cancer_count'] += 1
+                if 'aunt' in content and 'breast cancer' in content:
+                    history['breast_cancer_count'] += 1
+
+                # Handle conversational responses when discussing family cancer
+                elif discussing_family_cancer:
+                    # Count relatives mentioned in context of cancer discussion
+                    relatives_mentioned = []
+
+                    if 'grandmother' in content:
+                        relatives_mentioned.append('grandmother')
+                    if 'aunt' in content:
+                        relatives_mentioned.append('aunt')
+                    if 'mother' in content:
+                        relatives_mentioned.append('mother')
+                    if 'sister' in content:
+                        relatives_mentioned.append('sister')
+
+                    # If relatives are mentioned after a cancer question, count them
+                    if relatives_mentioned and (last_cancer_type == 'breast' or 'breast' in content):
+                        history['breast_cancer_count'] += len(relatives_mentioned)
+
+                # Count ovarian cancer
+                if any(relative in content for relative in ['mother', 'sister', 'grandmother', 'aunt']) and 'ovarian cancer' in content:
+                    history['ovarian_cancer_count'] += 1
+
+                # Male breast cancer
+                if ('father' in content or 'brother' in content or 'male' in content) and 'breast cancer' in content:
+                    history['male_breast_cancer'] = True
+
+                # Reset context if user says "no" or "none"
+                if content.strip() in ['no', 'none', 'not that i know of']:
+                    discussing_family_cancer = False
+
         return history
     
     def _extract_age_information(self, messages: List) -> Dict[str, Any]:
