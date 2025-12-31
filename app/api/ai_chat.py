@@ -231,16 +231,30 @@ async def get_chat_sessions(
     """Get chat sessions for the current user."""
     try:
         chat_engine = ChatEngineService(db)
-        
-        if session_status == SessionStatus.active.value:
-            sessions = chat_engine.get_active_sessions(
-                patient_id=patient_id,
-                user_id=current_user.id,
-                limit=limit
-            )
+
+        # Handle different session status filters
+        if session_status is not None:
+            if session_status == SessionStatus.active.value or session_status == "active":
+                sessions = chat_engine.get_active_sessions(
+                    patient_id=patient_id,
+                    user_id=current_user.id,
+                    limit=limit
+                )
+            elif session_status == SessionStatus.completed.value or session_status == "completed":
+                sessions = chat_engine.get_completed_sessions(
+                    patient_id=patient_id,
+                    user_id=current_user.id,
+                    limit=limit
+                )
+            else:
+                # Invalid status provided
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid session status: {session_status}. Must be 'active' or 'completed'"
+                )
         else:
-            # Get all sessions (would need to implement this method)
-            sessions = chat_engine.get_active_sessions(
+            # When no status filter is specified, return all sessions
+            sessions = chat_engine.get_all_sessions(
                 patient_id=patient_id,
                 user_id=current_user.id,
                 limit=limit

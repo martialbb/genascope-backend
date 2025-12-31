@@ -248,7 +248,72 @@ class ChatEngineService:
             patient_id=patient_id,
             limit=limit
         )
-    
+
+    def get_completed_sessions(
+        self,
+        patient_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = 10
+    ) -> List[AIChatSession]:
+        """Get completed chat sessions.
+
+        Args:
+            patient_id: Optional patient ID to filter by
+            user_id: Optional user ID to filter by (currently not used in repository)
+            limit: Maximum number of sessions to return
+
+        Returns:
+            List of completed AIChatSession objects
+        """
+        return self.ai_chat_repo.get_sessions_by_status(
+            SessionStatus.completed.value,
+            patient_id=patient_id,
+            limit=limit
+        )
+
+    def get_all_sessions(
+        self,
+        patient_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = 10
+    ) -> List[AIChatSession]:
+        """Get all chat sessions regardless of status.
+
+        Args:
+            patient_id: Optional patient ID to filter by
+            user_id: Optional user ID to filter by (currently not used in repository)
+            limit: Maximum number of sessions to return
+
+        Returns:
+            List of all AIChatSession objects
+        """
+        if patient_id:
+            # Use the dedicated method for getting all sessions for a patient
+            return self.ai_chat_repo.get_sessions_by_patient(patient_id, limit=limit)
+        else:
+            # Get all sessions by combining active and completed
+            sessions = []
+
+            # First get active sessions
+            active_sessions = self.ai_chat_repo.get_sessions_by_status(
+                SessionStatus.active.value,
+                patient_id=patient_id,
+                limit=limit
+            )
+            sessions.extend(active_sessions)
+
+            # Then get completed sessions
+            completed_sessions = self.ai_chat_repo.get_sessions_by_status(
+                SessionStatus.completed.value,
+                patient_id=patient_id,
+                limit=limit - len(sessions) if len(sessions) < limit else 0
+            )
+            sessions.extend(completed_sessions)
+
+            # Sort by started_at (most recent first) and limit
+            sessions.sort(key=lambda x: x.started_at, reverse=True)
+            return sessions[:limit]
+
     async def end_session(self, session_id: str, reason: str = "user_ended") -> Optional[AIChatSession]:
         """End a chat session.
         
