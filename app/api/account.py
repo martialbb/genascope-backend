@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.schemas.users import UserCreate, UserResponse
 from app.services.users import UserService
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/account", tags=["account"])
 @router.post("/create_user", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: UserCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """

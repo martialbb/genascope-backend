@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from typing import Optional, List
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.schemas import (
     AccountCreate, AccountResponse, AccountUpdate, AccountMetricsResponse,
     BillingInfo, BillingUpdate, Invoice
@@ -9,7 +9,7 @@ from app.schemas import (
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 # Mock admin verification - in a real app, this would check admin privileges
-async def verify_super_admin(current_user: User = Depends(get_current_active_user)):
+async def verify_super_admin(current_user: User = Depends(require_full_access)):
     # This is a simplified check - in a real app, you would check against user roles in the database
     if current_user.username != "admin@genascope.com":
         raise HTTPException(

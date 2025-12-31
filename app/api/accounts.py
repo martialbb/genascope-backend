@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.schemas.accounts import AccountCreate, AccountResponse, AccountUpdate
 from app.services.accounts import AccountService
 
@@ -12,7 +12,7 @@ from app.services.accounts import AccountService
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 # Verify super admin privileges for account management
-async def verify_super_admin(current_user: User = Depends(get_current_active_user)):
+async def verify_super_admin(current_user: User = Depends(require_full_access)):
     """Dependency to verify user has super admin privileges"""
     if current_user.role != "super_admin":
         raise HTTPException(
@@ -22,7 +22,7 @@ async def verify_super_admin(current_user: User = Depends(get_current_active_use
     return current_user
 
 # Verify admin or super admin privileges
-async def verify_admin_or_super_admin(current_user: User = Depends(get_current_active_user)):
+async def verify_admin_or_super_admin(current_user: User = Depends(require_full_access)):
     """Dependency to verify user has admin or super admin privileges"""
     if current_user.role not in ["admin", "super_admin"]:
         raise HTTPException(

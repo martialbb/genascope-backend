@@ -120,6 +120,34 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+
+async def require_full_access(current_user: User = Depends(get_current_active_user)) -> User:
+    """
+    Dependency that blocks simplified access tokens.
+    Use this on endpoints that should NOT be accessible to patients via invite links.
+    
+    Simplified access patients (via invite links) should only have access to:
+    - AI chat endpoints (/ai-chat/*)
+    - Invite verification (/verify_invite, /simplified_access)
+    
+    All other endpoints require full authentication.
+    """
+    if hasattr(current_user, 'is_simplified_access') and current_user.is_simplified_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is not accessible with simplified access. Please log in with full credentials.",
+            headers={"X-Error-Code": "SIMPLIFIED_ACCESS_RESTRICTED"}
+        )
+    return current_user
+
+
+async def require_simplified_or_full_access(current_user: User = Depends(get_current_active_user)) -> User:
+    """
+    Dependency that allows both simplified and full access tokens.
+    Use this on endpoints that SHOULD be accessible to patients via invite links (e.g., chat endpoints).
+    """
+    return current_user
+
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),

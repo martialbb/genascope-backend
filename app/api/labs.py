@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.services.labs_enhanced import LabService
 from app.models.user import UserRole
 from app.models.lab import OrderStatus as DBOrderStatus, ResultStatus as DBResultStatus
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/labs", tags=["labs"])
 
 @router.get("/available_tests", response_model=List[Dict[str, Any]])
 async def list_available_tests(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -27,7 +27,7 @@ async def list_available_tests(
 
 @router.get("/available_labs", response_model=List[Dict[str, Any]])
 async def list_available_labs(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -59,7 +59,7 @@ async def list_available_labs(
 @router.post("/order_test", response_model=LabOrderResponse)
 async def order_test(
     test_order: LabOrderCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -149,7 +149,7 @@ async def order_test(
 @router.get("/results/{order_id}", response_model=LabResultResponse)
 async def get_results(
     order_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -218,7 +218,7 @@ async def get_results(
 @router.get("/patient/{patient_id}/orders", response_model=List[LabOrderResponse])
 async def get_patient_orders(
     patient_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -291,7 +291,7 @@ async def get_patient_orders(
 @router.get("/clinician/{clinician_id}/orders", response_model=List[LabOrderResponse])
 async def get_clinician_orders(
     clinician_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -359,7 +359,7 @@ async def get_clinician_orders(
 @router.post("/review_result/{result_id}", response_model=SuccessResponse)
 async def review_result(
     result_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """

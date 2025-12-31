@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.services.rag_service import RAGService
 from app.repositories.ai_chat_repository import AIChatRepository
 from app.models.chat_configuration import KnowledgeSource
@@ -26,7 +26,7 @@ async def upload_knowledge_source(
     source_type: str = Form("document"),
     metadata: Optional[str] = Form(None),  # JSON string
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Upload a knowledge source file for AI chat strategies.
     
@@ -118,7 +118,7 @@ async def get_knowledge_sources(
     processing_status: Optional[str] = None,
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get list of knowledge sources."""
     try:
@@ -161,7 +161,7 @@ async def get_knowledge_sources(
 async def get_knowledge_source(
     source_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get details of a specific knowledge source."""
     try:
@@ -206,7 +206,7 @@ async def get_knowledge_source_chunks(
     source_id: str,
     limit: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get document chunks for a knowledge source."""
     try:
@@ -253,7 +253,7 @@ async def reindex_knowledge_source(
     source_id: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Reindex a knowledge source (regenerate embeddings)."""
     try:
@@ -293,7 +293,7 @@ async def reindex_knowledge_source(
 async def delete_knowledge_source(
     source_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Delete a knowledge source and all its chunks."""
     try:
@@ -334,7 +334,7 @@ async def search_knowledge(
     limit: int = 5,
     similarity_threshold: float = 0.7,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Search knowledge sources using vector similarity."""
     try:

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 import traceback
 from datetime import datetime, timedelta
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User, create_access_token
+from app.api.auth import require_full_access, User, create_access_token
 from app.services.invites import InviteService
 from app.services.users import UserService
 from app.services.patients import PatientService
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api", tags=["invites"])
 async def generate_invite(
     request: Request,
     invite_data: PatientInviteCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -149,7 +149,7 @@ async def generate_invite(
 async def bulk_invite(
     request: Request,
     bulk_data: BulkInviteCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -264,7 +264,7 @@ async def bulk_invite(
 async def resend_invite(
     request: Request,
     resend_data: InviteResend,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -510,7 +510,7 @@ async def simplified_patient_access(
 async def get_pending_invites(
     request: Request,
     clinician_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -597,7 +597,7 @@ async def get_pending_invites(
 @router.delete("/revoke/{invite_id}", response_model=SuccessResponse)
 async def revoke_invite(
     invite_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -655,7 +655,7 @@ async def list_invites(
     search: Optional[str] = Query(None, description="Search by patient name or email"),
     sort_by: Optional[str] = Query("created_at", description="Sort field"),
     sort_order: Optional[str] = Query("desc", description="Sort order: asc or desc"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -765,7 +765,7 @@ async def list_invites(
 @router.get("/invites/{invite_id}", response_model=PatientInviteResponse)
 async def get_invite_details(
     invite_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -855,7 +855,7 @@ async def get_invite_details(
 async def resend_specific_invite(
     invite_id: str,
     custom_message: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -941,7 +941,7 @@ async def resend_specific_invite(
 async def get_patient_invites(
     patient_id: str,
     invite_status: Optional[str] = Query(None, alias="status", description="Filter by invite status: pending, accepted, expired, revoked"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -1054,7 +1054,7 @@ async def get_patient_invites(
 
 @router.get("/clinicians", response_model=List[UserResponse])
 async def list_clinicians(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """

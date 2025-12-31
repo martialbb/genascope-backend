@@ -10,7 +10,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.services.ai_chat_engine import ChatEngineService
 from app.repositories.ai_chat_repository import AIChatRepository
 from app.services.eligibility import EligibilityService
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/eligibility", tags=["eligibility"])
 @router.post("/analyze", response_model=EligibilityResult)
 async def analyze_eligibility(
     assessment_req: EligibilityAssessmentRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -86,7 +86,7 @@ async def analyze_eligibility(
 @router.get("/analyze/{patient_id}", response_model=EligibilityResult)
 async def get_patient_eligibility(
     patient_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -134,7 +134,7 @@ async def get_patient_eligibility(
 @router.get("/detailed/{patient_id}", response_model=DetailedEligibilityResult)
 async def get_detailed_eligibility(
     patient_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -231,7 +231,7 @@ async def get_detailed_eligibility(
 async def detailed_assessment(
     request: EligibilityAssessmentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Perform a detailed eligibility assessment for a patient.
@@ -302,7 +302,7 @@ async def detailed_assessment(
 async def get_patient_recommendations(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Get personalized recommendations for a patient based on their eligibility analysis.
@@ -345,7 +345,7 @@ async def get_patient_recommendations(
 async def get_eligibility_summary(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Get a summary of eligibility status for a patient.

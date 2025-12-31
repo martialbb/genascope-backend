@@ -10,14 +10,14 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.schemas.users import UserCreate, UserResponse, UserUpdate
 from app.services.users import UserService
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 # Verify admin or super admin privileges for user management
-async def verify_user_management_permissions(current_user: User = Depends(get_current_active_user)):
+async def verify_user_management_permissions(current_user: User = Depends(require_full_access)):
     """Dependency to verify user has permissions to manage users"""
     if current_user.role not in ["admin", "super_admin"]:
         raise HTTPException(
@@ -27,7 +27,7 @@ async def verify_user_management_permissions(current_user: User = Depends(get_cu
     return current_user
 
 # Allow clinicians to view users (read-only) in their account
-async def verify_user_view_permissions(current_user: User = Depends(get_current_active_user)):
+async def verify_user_view_permissions(current_user: User = Depends(require_full_access)):
     """Dependency to verify user has permissions to view users"""
     if current_user.role not in ["admin", "super_admin", "clinician"]:
         raise HTTPException(
@@ -100,7 +100,7 @@ async def get_users_no_slash(
 @router.get("/{user_id}", response_model=UserResponse, summary="Get User")
 async def get_user(
     user_id: str = Path(..., description="The ID of the user to retrieve"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -238,7 +238,7 @@ async def update_user(
             }
         }
     ),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """

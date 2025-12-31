@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import uuid
 import json
 from sqlalchemy.orm import Session
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.db.database import get_db
 from app.models.appointment import Appointment, Availability, RecurringAvailability
 from app.services.appointments import AppointmentService
@@ -23,7 +23,7 @@ async def get_availability(
     clinician_id: str, 
     date_str: str = Query(..., alias="date"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Get available time slots for a clinician on a specific date
@@ -49,7 +49,7 @@ async def get_availability(
 async def book_appointment(
     appointment_data: AppointmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Book an appointment for a patient with a clinician
@@ -65,7 +65,7 @@ async def set_clinician_availability(
     availability: AvailabilityRequest,
     clinician_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Set availability for a clinician. This endpoint would be limited to clinicians setting their own
@@ -81,7 +81,7 @@ async def get_clinician_appointments(
     start_date: str,
     end_date: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Get all appointments for a clinician within a date range
@@ -101,7 +101,7 @@ async def get_clinician_appointments(
 async def get_patient_appointments(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Get all appointments for a patient
@@ -115,7 +115,7 @@ async def update_appointment(
     appointment_id: str,
     appointment_update: AppointmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Update an appointment's details (date, time, type, status, notes)
@@ -128,7 +128,7 @@ async def update_appointment(
 async def cancel_appointment(
     cancellation: AppointmentCancellation,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Cancel an appointment with optional reason
@@ -141,7 +141,7 @@ async def cancel_appointment(
 async def reschedule_appointment(
     rescheduling: AppointmentRescheduling,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     Reschedule an appointment to a new date and time
@@ -161,7 +161,7 @@ async def list_organization_appointments(
     clinician_id: Optional[str] = Query(None, description="Filter by specific clinician ID"),
     patient_id: Optional[str] = Query(None, description="Filter by specific patient ID"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """
     List all appointments for the current user's organization with pagination and filters.

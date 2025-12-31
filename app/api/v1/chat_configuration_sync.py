@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.services.chat_configuration_sync import (
     ChatStrategyService,
     KnowledgeSourceService,
@@ -38,7 +38,7 @@ security = HTTPBearer()
 def create_chat_strategy(
     strategy_data: ChatStrategyCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Create a new chat strategy."""
     # For now, use user's account_id if available, otherwise raise error
@@ -57,7 +57,7 @@ def list_chat_strategies(
     active_only: bool = False,
     specialty: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """List chat strategies for the current account."""
     account_id = getattr(current_user, 'account_id', None)
@@ -72,7 +72,7 @@ def list_chat_strategies(
 def get_chat_strategy(
     strategy_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get a specific chat strategy."""
     account_id = getattr(current_user, 'account_id', None)
@@ -88,7 +88,7 @@ def update_chat_strategy(
     strategy_id: str,
     strategy_data: ChatStrategyUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Update a chat strategy."""
     account_id = getattr(current_user, 'account_id', None)
@@ -103,7 +103,7 @@ def update_chat_strategy(
 def delete_chat_strategy(
     strategy_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Delete a chat strategy."""
     account_id = getattr(current_user, 'account_id', None)
@@ -122,7 +122,7 @@ def clone_chat_strategy(
     strategy_id: str,
     new_name: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Clone an existing chat strategy."""
     account_id = getattr(current_user, 'account_id', None)
@@ -138,7 +138,7 @@ def clone_chat_strategy(
 def create_knowledge_source(
     source_data: KnowledgeSourceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Create a new knowledge source."""
     account_id = getattr(current_user, 'account_id', None)
@@ -162,7 +162,7 @@ async def upload_file_knowledge_source(
     tags: Optional[str] = None,  # JSON string of tags
     access_level: Optional[str] = "private",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Upload a file as a knowledge source."""
     import json
@@ -198,7 +198,7 @@ async def upload_file_knowledge_source(
 def create_direct_knowledge_source(
     request: DirectUploadRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Create a knowledge source from direct content."""
     account_id = getattr(current_user, 'account_id', None)
@@ -216,7 +216,7 @@ def list_knowledge_sources(
     source_type: Optional[str] = None,
     processing_status: Optional[ProcessingStatus] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """List knowledge sources for the current account."""
     account_id = getattr(current_user, 'account_id', None)
@@ -233,7 +233,7 @@ def list_knowledge_sources(
 def get_knowledge_source(
     source_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get a specific knowledge source."""
     account_id = getattr(current_user, 'account_id', None)
@@ -249,7 +249,7 @@ def update_knowledge_source(
     source_id: str,
     update_data: KnowledgeSourceUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Update a knowledge source."""
     account_id = getattr(current_user, 'account_id', None)
@@ -264,7 +264,7 @@ def update_knowledge_source(
 def bulk_delete_knowledge_sources(
     source_ids: List[str],
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Bulk delete knowledge sources."""
     account_id = getattr(current_user, 'account_id', None)
@@ -280,7 +280,7 @@ def bulk_delete_knowledge_sources(
 async def delete_knowledge_source(
     source_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Delete a knowledge source."""
     account_id = getattr(current_user, 'account_id', None)
@@ -298,7 +298,7 @@ async def delete_knowledge_source(
 def search_knowledge_sources(
     search_params: KnowledgeSourceSearchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Search knowledge sources."""
     account_id = getattr(current_user, 'account_id', None)
@@ -312,7 +312,7 @@ def search_knowledge_sources(
 @router.get("/knowledge-sources/processing/queue", response_model=List[KnowledgeSourceResponse])
 def get_processing_queue(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get knowledge sources in processing queue."""
     account_id = getattr(current_user, 'account_id', None)
@@ -327,7 +327,7 @@ def get_processing_queue(
 def retry_processing(
     source_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Retry processing for a failed knowledge source."""
     account_id = getattr(current_user, 'account_id', None)
@@ -347,7 +347,7 @@ def get_strategy_analytics(
     strategy_id: str,
     days: int = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get analytics for a specific strategy."""
     account_id = getattr(current_user, 'account_id', None)
@@ -362,7 +362,7 @@ def get_strategy_analytics(
 def get_account_analytics(
     days: int = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get analytics for all strategies in the account."""
     account_id = getattr(current_user, 'account_id', None)
@@ -383,7 +383,7 @@ def health_check():
 @router.get("/stats")
 def get_configuration_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_full_access)
 ):
     """Get basic statistics for chat configuration."""
     account_id = getattr(current_user, 'account_id', None)

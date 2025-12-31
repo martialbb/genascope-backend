@@ -8,7 +8,7 @@ import csv
 from io import StringIO
 
 from app.db.database import get_db
-from app.api.auth import get_current_active_user, User
+from app.api.auth import require_full_access, User
 from app.services.patients import PatientService
 from app.services.invites import InviteService
 from app.models.user import UserRole
@@ -31,7 +31,7 @@ async def get_patients(
     status: Optional[str] = None,
     offset: int = 0,
     limit: int = 100,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -94,7 +94,7 @@ async def get_patients(
 async def create_patient(
     request: Request,
     patient_data: PatientCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -138,7 +138,7 @@ async def create_patient(
 async def bulk_create_patients(
     request: Request,
     bulk_data: PatientBulkImport,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -193,7 +193,7 @@ async def import_patients_from_csv(
     request: Request,
     file: UploadFile = File(...),
     clinician_id: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -288,7 +288,7 @@ async def import_patients_from_csv(
 async def get_patient(
     request: Request,
     patient_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -336,7 +336,7 @@ async def update_patient(
     request: Request,
     patient_id: str,
     patient_data: PatientUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
@@ -397,7 +397,7 @@ async def update_patient(
 async def delete_patient(
     request: Request,
     patient_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_full_access),
     db: Session = Depends(get_db)
 ):
     """
