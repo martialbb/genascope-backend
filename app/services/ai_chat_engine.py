@@ -745,32 +745,41 @@ Guidelines:
             # In production, this would use vector embeddings and similarity search
             context_parts = []
             
-            for knowledge_source in strategy.knowledge_sources:
-                if knowledge_source.source_type == "file" and knowledge_source.content:
-                    # Simple text search in knowledge source content
-                    content = knowledge_source.content.lower()
-                    message_lower = user_message.lower()
-                    
-                    # Check for relevant keywords
-                    relevant_keywords = [
-                        "brca", "breast cancer", "screening", "mammogram", "mri",
-                        "genetic", "hereditary", "family history", "risk assessment",
-                        "guidelines", "nccn", "recommendation"
-                    ]
-                    
-                    relevant_score = sum(1 for keyword in relevant_keywords if keyword in message_lower)
-                    
-                    if relevant_score > 0:
-                        # Extract relevant sections (simplified)
-                        sentences = knowledge_source.content.split('.')
-                        relevant_sentences = []
-                        
-                        for sentence in sentences[:50]:  # Limit to first 50 sentences
-                            if any(keyword in sentence.lower() for keyword in relevant_keywords):
-                                relevant_sentences.append(sentence.strip())
-                        
-                        if relevant_sentences:
-                            context_parts.append('\n'.join(relevant_sentences[:10]))  # Top 10 relevant sentences
+            for strategy_knowledge_source in strategy.knowledge_sources:
+                # Access the actual knowledge source through the relationship
+                knowledge_source = strategy_knowledge_source.knowledge_source
+
+                # Check if the knowledge source exists and has the expected attributes
+                if knowledge_source:
+                    # Safely get the source_type, defaulting to 'file' if not present
+                    source_type = getattr(knowledge_source, 'source_type', 'file')
+                    content_text = getattr(knowledge_source, 'content', None) or getattr(knowledge_source, 'content_summary', '')
+
+                    if source_type == "file" and content_text:
+                        # Simple text search in knowledge source content
+                        content = content_text.lower()
+                        message_lower = user_message.lower()
+
+                        # Check for relevant keywords
+                        relevant_keywords = [
+                            "brca", "breast cancer", "screening", "mammogram", "mri",
+                            "genetic", "hereditary", "family history", "risk assessment",
+                            "guidelines", "nccn", "recommendation"
+                        ]
+
+                        relevant_score = sum(1 for keyword in relevant_keywords if keyword in message_lower)
+
+                        if relevant_score > 0:
+                            # Extract relevant sections (simplified)
+                            sentences = content_text.split('.')
+                            relevant_sentences = []
+
+                            for sentence in sentences[:50]:  # Limit to first 50 sentences
+                                if any(keyword in sentence.lower() for keyword in relevant_keywords):
+                                    relevant_sentences.append(sentence.strip())
+
+                            if relevant_sentences:
+                                context_parts.append('\n'.join(relevant_sentences[:10]))  # Top 10 relevant sentences
             
             return '\n\n'.join(context_parts) if context_parts else ""
         
